@@ -3,6 +3,10 @@ import torch.nn as nn
 import torch.autograd as autograd
 import numpy as np
 import matplotlib.pyplot as plt
+from torch.utils import tensorboard
+
+import argparse
+
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 VAL_INTERVAL = 100
@@ -10,13 +14,21 @@ LOG_INTERVAL = 100
 
 
 def generate_y(x: np.array) -> np.array:
-    y = np.sin(20 * x)
+    y = np.sin(5 * x)
     return y
 
 
 def generate_data(mode: str, num: int, lb: float, rb: float) -> tuple[np.array, np.array]:
     x = np.random.uniform(lb, rb, num)
-    y = generate_y(x)
+
+    if mode == "data":
+        y = generate_y(x)
+    elif mode == "physics":
+        y = np.zeros(x.shape)
+    elif mode == "boundary":
+        x = np.vstack([np.full(1, lb), np.full(1, rb)])
+        y = generate_y(x)
+
     return x, y
 
 
@@ -50,7 +62,7 @@ class hybrid_model(nn.Module):
         self.device = DEVICE
 
     def forward(self, data: torch.Tensor) -> torch.Tensor:
-        act_func = nn.Sigmoid()
+        act_func = nn.Tanh()
 
         tmp = data
 
@@ -66,6 +78,9 @@ class hybrid_model(nn.Module):
         return self.forward(data)
 
     def calc_loss_f(self, data: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        if data == None:
+            return 0
+
         u_hat = self(data)
         x = data.reshape(-1, 1)
 
@@ -75,21 +90,37 @@ class hybrid_model(nn.Module):
         u_hat_x_x = deriv_2[0].reshape(-1, 1)
 
         # modify here
-        f = u_hat_x_x + x
+        f = u_hat_x_x + 25 * x
         func = nn.MSELoss()
 
         return func(f, target)
 
 
-def plot_progress(epochs: int, losses: list, mode: str) -> None:
-    interval = 1 if mode == "train" else VAL_INTERVAL
+def plot_progress(epochs: int, losses: dict, train_mode: str, mode: str) -> None:
+    interval = 1 if train_mode == "train" else VAL_INTERVAL
     plt.cla()
-    plt.plot(np.arange(1, epochs + 1, interval), losses)
-    plt.title(f"{mode} progress")
-    plt.savefig(f"./fig/test_{mode}.jpg")
+    if mode == "data" or train_mode == "validation":
+        plt.plot(np.arange(1, epochs + 1, interval), losses["total"], label="Supervised loss")
+    elif mode == "physics":
+        plt.plot(np.arange(1, epochs + 1, interval), losses["boundary"], label="Boundary loss")
+        plt.plot(np.arange(1, epochs + 1, interval), losses["pde"], label="PDE loss")
+        plt.plot(np.arange(1, epochs + 1, interval), losses["total"], label="Total loss")
+    elif mode == "hybrid":
+        plt.plot(np.arange(1, epochs + 1, interval), losses["data"], label="Supervised loss")
+        plt.plot(np.arange(1, epochs + 1, interval), losses["boundary"], label="Boundary loss")
+        plt.plot(np.arange(1, epochs + 1, interval), losses["pde"], label="PDE loss")
+        plt.plot(np.arange(1, epochs + 1, interval), losses["total"], label="Total loss")
+
+    plt.legend()
+    plt.xlabel("epochs")
+    plt.ylabel("loss")
+    plt.yscale("log")
+
+    plt.title(f"{train_mode} progress")
+    plt.savefig(f"./fig/test_{train_mode}_{mode}.jpg")
 
 
-def plot_comparison(model: torch.nn.Module) -> None:
+def plot_comparison(model: torch.nn.Module, mode: str) -> None:
     plt.cla()
     x_plot = np.arange(-1, 1, 0.01)
     x_plot_tensor = to_tensor(x_plot, requires_grad=False).to(DEVICE)
@@ -99,7 +130,9 @@ def plot_comparison(model: torch.nn.Module) -> None:
     plt.scatter(x_plot, pred, label="Prediction")
     plt.scatter(x_plot, truth, label="Ground truth")
     plt.legend()
-    plt.savefig("./fig/test_comparison")
+    plt.xlabel("x")
+    plt.ylabel("u")
+    plt.savefig(f"./fig/test_comparison_{mode}")
     nrmse = compute_nrmse(pred, truth)
     print(nrmse)
 
@@ -111,14 +144,15 @@ def compute_nrmse(pred: np.array, truth: np.array) -> float:
 
 
 def train(
-    epochs: int = 1000,
+    epochs: int = 10000,
     lr: float = 0.1,
     i_size: int = 500,
     b_size: int = 500,
     f_size: int = 1000,
-    mode: str = "data",
+    mode: str = "physics",
 ):
 
+    print(f"Current Mode: {mode}")
     model = hybrid_model(neuron_size=5, layer_size=2, dim=1)
 
     optim = torch.optim.Adam(model.parameters(), lr=lr)
@@ -126,16 +160,62 @@ def train(
     print(model)
 
     if mode == "data":
-        x_train, y_train = generate_data(mode="data", num=10, lb=-1, rb=1)
+        x_train, y_train = generate_data(mode=mode, num=10, lb=-1.0, rb=1.0)
         x_train = to_tensor(x_train)
         y_train = to_tensor(y_train)
 
-        x_val, y_val = generate_data(mode="data", num=2, lb=-1, rb=1)
+        x_val, y_val = generate_data(mode=mode, num=2, lb=-1.0, rb=1.0)
         x_val = to_tensor(x_val)
         y_val = to_tensor(y_val)
 
         x_train = x_train.to(DEVICE)
         y_train = y_train.to(DEVICE)
+        x_val = x_val.to(DEVICE)
+        y_val = y_val.to(DEVICE)
+
+    elif mode == "physics":
+        x_b_train, y_b_train = generate_data(mode="boundary", num=1, lb=-1.0, rb=1.0)
+        x_b_train = to_tensor(x_b_train)
+        y_b_train = to_tensor(y_b_train)
+
+        x_f_train, y_f_train = generate_data(mode=mode, num=f_size, lb=-1.0, rb=1.0)
+        x_f_train = to_tensor(x_f_train)
+        y_f_train = to_tensor(y_f_train)
+
+        x_val, y_val = generate_data(mode="data", num=2, lb=-1.0, rb=1.0)
+        x_val = to_tensor(x_val)
+        y_val = to_tensor(y_val)
+
+        x_b_train = x_b_train.to(DEVICE)
+        y_b_train = y_b_train.to(DEVICE)
+        x_f_train = x_f_train.to(DEVICE)
+        y_f_train = y_f_train.to(DEVICE)
+        x_val = x_val.to(DEVICE)
+        y_val = y_val.to(DEVICE)
+
+    elif mode == "hybrid":
+        x_train, y_train = generate_data(mode="data", num=10, lb=-1.0, rb=1.0)
+        x_train = to_tensor(x_train)
+        y_train = to_tensor(y_train)
+
+        x_b_train, y_b_train = generate_data(mode="boundary", num=b_size, lb=-1.0, rb=1.0)
+        x_b_train = to_tensor(x_b_train)
+        y_b_train = to_tensor(y_b_train)
+
+        x_f_train, y_f_train = generate_data(mode="physics", num=f_size, lb=-1.0, rb=1.0)
+        x_f_train = to_tensor(x_f_train)
+        y_f_train = to_tensor(y_f_train)
+
+        x_val, y_val = generate_data(mode="data", num=2, lb=-1.0, rb=1.0)
+        x_val = to_tensor(x_val)
+        y_val = to_tensor(y_val)
+
+        x_train = x_train.to(DEVICE)
+        y_train = y_train.to(DEVICE)
+        x_b_train = x_b_train.to(DEVICE)
+        y_b_train = y_b_train.to(DEVICE)
+        x_f_train = x_f_train.to(DEVICE)
+        y_f_train = y_f_train.to(DEVICE)
         x_val = x_val.to(DEVICE)
         y_val = y_val.to(DEVICE)
 
@@ -146,37 +226,180 @@ def train(
     losses_train = []
     losses_val = []
 
-    loss_save = np.inf
+    if mode == "data":
+        for epoch in range(1, epochs + 1):
+            model.train()
 
-    for epoch in range(1, epochs + 1):
-        model.train()
+            optim.zero_grad()
 
-        optim.zero_grad()
+            # x_train = x_b_train
+            # y_train = y_b_train
+            loss_train = loss_func(y_train, model(x_train))
+            # loss_f_train = model.calc_loss_f(x_f_train, y_f_train)
 
-        loss_train = loss_func(y_train, model(x_train))
+            loss_train.to(DEVICE)
+            # loss_f_train.to(DEVICE)
 
-        loss_train.to(DEVICE)
+            # loss_train = loss_train + loss_f_train
 
-        loss_train.backward()
+            loss_train.backward()
 
-        optim.step()
+            optim.step()
 
-        losses_train += [loss_train.item()]
+            losses_train += [loss_train.item()]
 
-        if epoch % LOG_INTERVAL == 0:
-            print(f"Epoch {epoch}: Loss {loss_train.item(): .3f}")
+            if epoch % LOG_INTERVAL == 0:
+                print(f"Epoch {epoch}: Loss {loss_train.item(): .3f}")
 
-        if epoch % VAL_INTERVAL == 0:
-            model.eval()
+            if epoch % VAL_INTERVAL == 0:
+                model.eval()
 
-            loss_val = loss_func(y_val, model(x_val))
-            print(f"Validation loss {loss_val.item(): .3f}")
-            losses_val += [loss_val.item()]
+                loss_val = loss_func(y_val, model(x_val))
+                print(f"Validation loss {loss_val.item(): .3f}")
+                losses_val += [loss_val.item()]
 
-    plot_progress(epochs, losses_train, mode="train")
-    plot_progress(epochs, losses_val, mode="validation")
-    plot_comparison(model)
+    elif mode == "physics":
+        losses_b_train = []
+        losses_f_train = []
+
+        for epoch in range(1, epochs + 1):
+            model.train()
+
+            optim.zero_grad()
+
+            loss_b_train = loss_func(y_b_train, model(x_b_train))
+            loss_f_train = model.calc_loss_f(x_f_train, y_f_train)
+
+            loss_b_train.to(DEVICE)
+            loss_f_train.to(DEVICE)
+
+            loss_train = loss_b_train + loss_f_train
+
+            loss_train.backward()
+
+            optim.step()
+
+            losses_b_train += [loss_b_train.item()]
+            losses_f_train += [loss_f_train.item()]
+            losses_train += [loss_train.item()]
+
+            if epoch % LOG_INTERVAL == 0:
+                print(
+                    f"Epoch {epoch}: Boundary loss {loss_b_train.item(): .3f}, PDE loss {loss_f_train.item(): .3f}, Total loss {loss_train.item(): .3f}"
+                )
+
+            if epoch % VAL_INTERVAL == 0:
+                model.eval()
+
+                loss_val = loss_func(y_val, model(x_val))
+                print(f"Validation loss {loss_val.item(): .3f}")
+                losses_val += [loss_val.item()]
+
+    elif mode == "hybrid":
+        losses_d_train = []
+        losses_b_train = []
+        losses_f_train = []
+
+        for epoch in range(1, epochs + 1):
+            model.train()
+
+            optim.zero_grad()
+
+            loss_d_train = loss_func(y_train, model(x_train))
+            loss_b_train = loss_func(y_b_train, model(x_b_train))
+            loss_f_train = model.calc_loss_f(x_f_train, y_f_train)
+
+            loss_d_train.to(DEVICE)
+            loss_b_train.to(DEVICE)
+            loss_f_train.to(DEVICE)
+
+            loss_train = loss_d_train + loss_b_train + loss_f_train
+
+            loss_train.backward()
+
+            optim.step()
+
+            losses_d_train += [loss_d_train.item()]
+            losses_b_train += [loss_b_train.item()]
+            losses_f_train += [loss_f_train.item()]
+            losses_train += [loss_train.item()]
+
+            if epoch % LOG_INTERVAL == 0:
+                print(
+                    f"Epoch {epoch}: Supervised loss {loss_d_train.item(): .3f}, Boundary loss {loss_b_train.item(): .3f}, PDE loss {loss_f_train.item(): .3f}, Total loss {loss_train.item(): .3f}"
+                )
+
+            if epoch % VAL_INTERVAL == 0:
+                model.eval()
+
+                loss_val = loss_func(y_val, model(x_val))
+                print(f"Validation loss {loss_val.item(): .3f}")
+                losses_val += [loss_val.item()]
+
+    if mode == "data":
+        losses_train_dict = {"total": losses_train}
+    elif mode == "physics":
+        losses_train_dict = {
+            "boundary": losses_b_train,
+            "pde": losses_f_train,
+            "total": losses_train,
+        }
+    elif mode == "hybrid":
+        losses_train_dict = {
+            "data": losses_d_train,
+            "boundary": losses_b_train,
+            "pde": losses_f_train,
+            "total": losses_train,
+        }
+
+    losses_val_dict = {"total": losses_val}
+
+    plot_progress(epochs, losses_train_dict, train_mode="train", mode=mode)
+    plot_progress(epochs, losses_val_dict, train_mode="validation", mode=mode)
+    plot_comparison(model, mode=mode)
+
+
+def main(args: dict) -> None:
+    train(
+        epochs=args.epochs,
+        lr=args.learning_rate,
+        i_size=0,
+        b_size=args.num_boundary_data,
+        f_size=args.num_pde_data,
+        mode=args.mode,
+    )
 
 
 if __name__ == "__main__":
-    train()
+    parser = argparse.ArgumentParser("Train a model!")
+    parser.add_argument("--mode", type=str, default="data", help="training mode")
+    parser.add_argument(
+        "--num_data", type=int, default=10, help="number of labeled data (supervised learning)"
+    )
+    parser.add_argument(
+        "--num_boundary_data",
+        type=int,
+        default=2,
+        help="number of boundary data (physics-informed learning)",
+    )
+    parser.add_argument(
+        "--num_pde_data",
+        type=int,
+        default=10,
+        help="number of pde data (physics-informed learning)",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=10000,
+        help="number of epochs",
+    )
+    parser.add_argument(
+        "--learning_rate",
+        type=int,
+        default=0.1,
+        help="learning rate",
+    )
+
+    main_args = parser.parse_args()
+    main(main_args)
