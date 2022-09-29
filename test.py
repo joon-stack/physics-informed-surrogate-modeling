@@ -425,7 +425,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_pde_data",
         type=int,
-        default=1000,
+        default=10000,
         help="number of pde data (physics-informed learning)",
     )
     parser.add_argument(
