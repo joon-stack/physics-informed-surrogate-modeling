@@ -6,20 +6,28 @@ import matplotlib.pyplot as plt
 from torch.utils import tensorboard
 
 import argparse
+import os
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 VAL_INTERVAL = 100
 LOG_INTERVAL = 100
+SAVE_INTERVAL = 5000
+LB = -10.0
+RB = 10.0
+RANDOM = False
 
 
 def generate_y(x: np.array) -> np.array:
-    y = np.sin(5 * x)
+    y = np.sin(1 * x)
     return y
 
 
-def generate_data(mode: str, num: int, lb: float, rb: float) -> tuple[np.array, np.array]:
-    x = np.random.uniform(lb, rb, num)
+def generate_data(
+    mode: str, num: int, lb: float, rb: float, random: bool
+) -> tuple[np.array, np.array]:
+    interval = (rb - lb) / num
+    x = np.random.uniform(lb, rb, num) if random else np.arange(lb, rb + interval, interval)
 
     if mode == "data":
         y = generate_y(x)
@@ -41,7 +49,7 @@ def to_tensor(x: np.array, requires_grad: bool = True) -> torch.Tensor:
 
 
 class hybrid_model(nn.Module):
-    def __init__(self, neuron_size: int, layer_size: int, dim: int) -> None:
+    def __init__(self, neuron_size: int, layer_size: int, dim: int, log_dir: str) -> None:
 
         super(hybrid_model, self).__init__()
 
@@ -60,6 +68,7 @@ class hybrid_model(nn.Module):
         self.module1 = nn.Sequential(*layers)
 
         self.device = DEVICE
+        self.log_dir = log_dir
 
     def forward(self, data: torch.Tensor) -> torch.Tensor:
         act_func = nn.Tanh()
@@ -90,10 +99,13 @@ class hybrid_model(nn.Module):
         u_hat_x_x = deriv_2[0].reshape(-1, 1)
 
         # modify here
-        f = u_hat_x_x + 25 * x
+        f = u_hat_x_x + 1 * u_hat
         func = nn.MSELoss()
 
         return func(f, target)
+
+    def save(self, epoch):
+        torch.save(self.state_dict(), f"{os.path.join(self.log_dir, 'state')}{epoch}.model")
 
 
 def plot_progress(epochs: int, losses: dict, train_mode: str, mode: str) -> None:
@@ -122,13 +134,13 @@ def plot_progress(epochs: int, losses: dict, train_mode: str, mode: str) -> None
 
 def plot_comparison(model: torch.nn.Module, mode: str) -> None:
     plt.cla()
-    x_plot = np.arange(-1, 1, 0.01)
+    x_plot = np.arange(LB, RB, 0.01)
     x_plot_tensor = to_tensor(x_plot, requires_grad=False).to(DEVICE)
     pred = model(x_plot_tensor).cpu().detach().numpy()
     truth = generate_y(x_plot)
 
-    plt.scatter(x_plot, pred, label="Prediction")
-    plt.scatter(x_plot, truth, label="Ground truth")
+    plt.plot(x_plot, truth, "b", linewidth=3, label="Ground truth")
+    plt.plot(x_plot, pred, "r--", label="Prediction")
     plt.legend()
     plt.xlabel("x")
     plt.ylabel("u")
@@ -144,6 +156,8 @@ def compute_nrmse(pred: np.array, truth: np.array) -> float:
 
 
 def train(
+    writer: tensorboard.SummaryWriter,
+    log_dir: str,
     epochs: int = 10000,
     lr: float = 0.1,
     i_size: int = 500,
@@ -153,18 +167,18 @@ def train(
 ):
 
     print(f"Current Mode: {mode}")
-    model = hybrid_model(neuron_size=5, layer_size=2, dim=1)
+    model = hybrid_model(neuron_size=5, layer_size=2, dim=1, log_dir=log_dir)
 
     optim = torch.optim.Adam(model.parameters(), lr=lr)
 
     print(model)
 
     if mode == "data":
-        x_train, y_train = generate_data(mode=mode, num=10, lb=-1.0, rb=1.0)
+        x_train, y_train = generate_data(mode=mode, num=10, lb=LB, rb=RB, random=RANDOM)
         x_train = to_tensor(x_train)
         y_train = to_tensor(y_train)
 
-        x_val, y_val = generate_data(mode=mode, num=2, lb=-1.0, rb=1.0)
+        x_val, y_val = generate_data(mode=mode, num=100, lb=LB, rb=RB, random=RANDOM)
         x_val = to_tensor(x_val)
         y_val = to_tensor(y_val)
 
@@ -174,15 +188,15 @@ def train(
         y_val = y_val.to(DEVICE)
 
     elif mode == "physics":
-        x_b_train, y_b_train = generate_data(mode="boundary", num=1, lb=-1.0, rb=1.0)
+        x_b_train, y_b_train = generate_data(mode="boundary", num=1, lb=LB, rb=RB, random=RANDOM)
         x_b_train = to_tensor(x_b_train)
         y_b_train = to_tensor(y_b_train)
 
-        x_f_train, y_f_train = generate_data(mode=mode, num=f_size, lb=-1.0, rb=1.0)
+        x_f_train, y_f_train = generate_data(mode=mode, num=f_size, lb=LB, rb=RB, random=RANDOM)
         x_f_train = to_tensor(x_f_train)
         y_f_train = to_tensor(y_f_train)
 
-        x_val, y_val = generate_data(mode="data", num=2, lb=-1.0, rb=1.0)
+        x_val, y_val = generate_data(mode="data", num=100, lb=LB, rb=RB, random=RANDOM)
         x_val = to_tensor(x_val)
         y_val = to_tensor(y_val)
 
@@ -194,19 +208,23 @@ def train(
         y_val = y_val.to(DEVICE)
 
     elif mode == "hybrid":
-        x_train, y_train = generate_data(mode="data", num=10, lb=-1.0, rb=1.0)
+        x_train, y_train = generate_data(mode="data", num=10, lb=LB, rb=RB, random=RANDOM)
         x_train = to_tensor(x_train)
         y_train = to_tensor(y_train)
 
-        x_b_train, y_b_train = generate_data(mode="boundary", num=b_size, lb=-1.0, rb=1.0)
+        x_b_train, y_b_train = generate_data(
+            mode="boundary", num=b_size, lb=LB, rb=RB, random=RANDOM
+        )
         x_b_train = to_tensor(x_b_train)
         y_b_train = to_tensor(y_b_train)
 
-        x_f_train, y_f_train = generate_data(mode="physics", num=f_size, lb=-1.0, rb=1.0)
+        x_f_train, y_f_train = generate_data(
+            mode="physics", num=f_size, lb=LB, rb=RB, random=RANDOM
+        )
         x_f_train = to_tensor(x_f_train)
         y_f_train = to_tensor(y_f_train)
 
-        x_val, y_val = generate_data(mode="data", num=2, lb=-1.0, rb=1.0)
+        x_val, y_val = generate_data(mode="data", num=100, lb=LB, rb=RB, random=RANDOM)
         x_val = to_tensor(x_val)
         y_val = to_tensor(y_val)
 
@@ -232,15 +250,9 @@ def train(
 
             optim.zero_grad()
 
-            # x_train = x_b_train
-            # y_train = y_b_train
             loss_train = loss_func(y_train, model(x_train))
-            # loss_f_train = model.calc_loss_f(x_f_train, y_f_train)
 
             loss_train.to(DEVICE)
-            # loss_f_train.to(DEVICE)
-
-            # loss_train = loss_train + loss_f_train
 
             loss_train.backward()
 
@@ -250,6 +262,7 @@ def train(
 
             if epoch % LOG_INTERVAL == 0:
                 print(f"Epoch {epoch}: Loss {loss_train.item(): .3f}")
+                writer.add_scalar("loss/train", loss_train.item(), epoch)
 
             if epoch % VAL_INTERVAL == 0:
                 model.eval()
@@ -257,6 +270,10 @@ def train(
                 loss_val = loss_func(y_val, model(x_val))
                 print(f"Validation loss {loss_val.item(): .3f}")
                 losses_val += [loss_val.item()]
+                writer.add_scalar("loss/validation", loss_val.item(), epoch)
+
+            if epoch % SAVE_INTERVAL == 0:
+                model.save(epoch)
 
     elif mode == "physics":
         losses_b_train = []
@@ -287,6 +304,9 @@ def train(
                 print(
                     f"Epoch {epoch}: Boundary loss {loss_b_train.item(): .3f}, PDE loss {loss_f_train.item(): .3f}, Total loss {loss_train.item(): .3f}"
                 )
+                writer.add_scalar("loss/boundary", loss_b_train.item(), epoch)
+                writer.add_scalar("loss/PDE", loss_f_train.item(), epoch)
+                writer.add_scalar("loss/total", loss_train.item(), epoch)
 
             if epoch % VAL_INTERVAL == 0:
                 model.eval()
@@ -294,6 +314,10 @@ def train(
                 loss_val = loss_func(y_val, model(x_val))
                 print(f"Validation loss {loss_val.item(): .3f}")
                 losses_val += [loss_val.item()]
+                writer.add_scalar("loss/validation", loss_val.item(), epoch)
+
+            if epoch % SAVE_INTERVAL == 0:
+                model.save(epoch)
 
     elif mode == "hybrid":
         losses_d_train = []
@@ -328,6 +352,10 @@ def train(
                 print(
                     f"Epoch {epoch}: Supervised loss {loss_d_train.item(): .3f}, Boundary loss {loss_b_train.item(): .3f}, PDE loss {loss_f_train.item(): .3f}, Total loss {loss_train.item(): .3f}"
                 )
+                writer.add_scalar("loss/train", loss_d_train.item(), epoch)
+                writer.add_scalar("loss/boundary", loss_b_train.item(), epoch)
+                writer.add_scalar("loss/PDE", loss_f_train.item(), epoch)
+                writer.add_scalar("loss/total", loss_train.item(), epoch)
 
             if epoch % VAL_INTERVAL == 0:
                 model.eval()
@@ -335,6 +363,10 @@ def train(
                 loss_val = loss_func(y_val, model(x_val))
                 print(f"Validation loss {loss_val.item(): .3f}")
                 losses_val += [loss_val.item()]
+                writer.add_scalar("loss/validation", loss_val.item(), epoch)
+
+            if epoch % SAVE_INTERVAL == 0:
+                model.save(epoch)
 
     if mode == "data":
         losses_train_dict = {"total": losses_train}
@@ -360,6 +392,12 @@ def train(
 
 
 def main(args: dict) -> None:
+    log_dir = args.log_dir
+    if log_dir is None:
+        log_dir = f"./logs/{args.mode}/{args.epochs}epochs_{args.learning_rate}lr_{args.num_data}data_{args.num_boundary_data}data_b_{args.num_pde_data}data_f"
+    print(f"log_dir: {log_dir}")
+    writer = tensorboard.SummaryWriter(log_dir=log_dir)
+    print(f"device: {DEVICE}")
     train(
         epochs=args.epochs,
         lr=args.learning_rate,
@@ -367,6 +405,8 @@ def main(args: dict) -> None:
         b_size=args.num_boundary_data,
         f_size=args.num_pde_data,
         mode=args.mode,
+        log_dir=log_dir,
+        writer=writer,
     )
 
 
@@ -385,20 +425,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_pde_data",
         type=int,
-        default=10,
+        default=1000,
         help="number of pde data (physics-informed learning)",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=10000,
+        default=20000,
         help="number of epochs",
     )
     parser.add_argument(
         "--learning_rate",
         type=int,
-        default=0.1,
+        default=0.01,
         help="learning rate",
+    )
+    parser.add_argument(
+        "--log_dir", type=str, default=None, help="directory to save to or load from"
     )
 
     main_args = parser.parse_args()
