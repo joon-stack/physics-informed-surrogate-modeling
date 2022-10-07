@@ -8,6 +8,8 @@ from torch.utils import tensorboard
 import argparse
 import os
 
+from burgers import *
+
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 VAL_INTERVAL = 100
@@ -17,25 +19,51 @@ LB = -10.0
 RB = 10.0
 RANDOM = False
 
+NU = 0.01 / np.pi
 
-def generate_y(x: np.array) -> np.array:
-    y = np.sin(1 * x)
+
+def generate_y(x: np.array, t: np.array, xn: int, tn: int, mode: str) -> np.array:
+    if mode == "physics":
+        y = burgers_viscous_time_exact1(NU, xn, x, tn, t).T.reshape(-1, 1)
+    elif mode == "boundary":
     return y
 
 
 def generate_data(
-    mode: str, num: int, lb: float, rb: float, random: bool
+    mode: str,
+    num_x: int,
+    num_t: int,
+    num_b: int,
+    num_i: int,
+    lb_x: float,
+    rb_x: float,
+    lb_t: float,
+    rb_t: float,
+    random: bool,
 ) -> tuple[np.array, np.array]:
-    interval = (rb - lb) / num
-    x = np.random.uniform(lb, rb, num) if random else np.arange(lb, rb + interval, interval)
+    interval_x = (rb_x - lb_x) / num_x
+    interval_t = (rb_t - lb_t) / num_t
+    x = (
+        np.random.uniform(lb_x, rb_x, num_x)
+        if random
+        else np.arange(lb_x, rb_x + interval_x, interval_x)
+    )
+    t = (
+        np.random.uniform(lb_t, rb_t, num_t)
+        if random
+        else np.arange(lb_t, rb_t + interval_t, interval_t)
+    )
 
     if mode == "data":
-        y = generate_y(x)
+        y = generate_y(x, t, num_x, num_t)
     elif mode == "physics":
-        y = np.zeros(x.shape)
+        y = np.zeros(num_x * num_t)
     elif mode == "boundary":
-        x = np.vstack([np.full(1, lb), np.full(1, rb)])
-        y = generate_y(x)
+        x = np.vstack([np.full(num_b // 2, lb_x), np.full(num_b - num_b // 2, rb_x)])
+        y = generate_y(x, t)
+    elif mode == "initial":
+        t = np.zeros(num_x)
+        y = generate_y(x, t)
 
     return x, y
 
@@ -100,9 +128,10 @@ class hybrid_model(nn.Module):
 
         # modify here
         f = u_hat_x_x + 1 * u_hat
+        f2 = 1 - u_hat_x**2 - u_hat**2
         func = nn.MSELoss()
 
-        return func(f, target)
+        return func(f, target) + func(f2, target)
 
     def save(self, epoch):
         torch.save(self.state_dict(), f"{os.path.join(self.log_dir, 'state')}{epoch}.model")
@@ -158,16 +187,16 @@ def compute_nrmse(pred: np.array, truth: np.array) -> float:
 def train(
     writer: tensorboard.SummaryWriter,
     log_dir: str,
-    epochs: int = 10000,
-    lr: float = 0.1,
-    i_size: int = 500,
-    b_size: int = 500,
-    f_size: int = 1000,
+    epochs: int,
+    lr: float,
+    i_size: int,
+    b_size: int,
+    f_size: int,
     mode: str = "physics",
 ):
 
     print(f"Current Mode: {mode}")
-    model = hybrid_model(neuron_size=5, layer_size=2, dim=1, log_dir=log_dir)
+    model = hybrid_model(neuron_size=5, layer_size=3, dim=1, log_dir=log_dir)
 
     optim = torch.optim.Adam(model.parameters(), lr=lr)
 
@@ -330,7 +359,8 @@ def train(
             optim.zero_grad()
 
             loss_d_train = loss_func(y_train, model(x_train))
-            loss_b_train = loss_func(y_b_train, model(x_b_train))
+            loss_b_train = 0 * loss_func(y_b_train, model(x_b_train))
+
             loss_f_train = model.calc_loss_f(x_f_train, y_f_train)
 
             loss_d_train.to(DEVICE)
@@ -425,13 +455,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_pde_data",
         type=int,
-        default=10000,
+        default=5000,
         help="number of pde data (physics-informed learning)",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=20000,
+        default=50000,
         help="number of epochs",
     )
     parser.add_argument(
