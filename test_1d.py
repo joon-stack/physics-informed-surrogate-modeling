@@ -10,11 +10,13 @@ import os
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-VAL_INTERVAL = 100
-LOG_INTERVAL = 100
+VAL_INTERVAL = 10000
+LOG_INTERVAL = 10000
 SAVE_INTERVAL = 5000
 LB = -10.0
 RB = 10.0
+LB_OOD = 10.0
+RB_OOD = 12.0
 RANDOM = False
 
 
@@ -130,12 +132,15 @@ def plot_progress(epochs: int, losses: dict, train_mode: str, mode: str) -> None
     plt.yscale("log")
 
     plt.title(f"{train_mode} progress")
-    plt.savefig(f"./fig/test_{train_mode}_{mode}.jpg")
+    plt.savefig(f"./fig_1d/test_{train_mode}_{mode}.jpg")
 
 
-def plot_comparison(model: torch.nn.Module, mode: str) -> None:
+def plot_comparison(model: torch.nn.Module, mode: str, ood: bool = False) -> None:
     plt.cla()
-    x_plot = np.arange(LB, RB, 0.01)
+    if ood == False:
+        x_plot = np.arange(LB, RB, 0.01)
+    else:
+        x_plot = np.arange(LB_OOD, RB_OOD, 0.01)
     x_plot_tensor = to_tensor(x_plot, requires_grad=False).to(DEVICE)
     pred = model(x_plot_tensor).cpu().detach().numpy()
     truth = generate_y(x_plot)
@@ -145,9 +150,9 @@ def plot_comparison(model: torch.nn.Module, mode: str) -> None:
     plt.legend()
     plt.xlabel("x")
     plt.ylabel("u")
-    plt.savefig(f"./fig/test_comparison_{mode}")
+    plt.savefig(f"./fig_1d/test_comparison_{mode}_ood_{ood}.png")
     nrmse = compute_nrmse(pred, truth)
-    print(nrmse)
+    return nrmse
 
 
 def compute_nrmse(pred: np.array, truth: np.array) -> float:
@@ -244,6 +249,7 @@ def train(
 
     losses_train = []
     losses_val = []
+    nrmse = {"id": 0.0, "ood": 0.0}
 
     if mode == "data":
         for epoch in range(1, epochs + 1):
@@ -390,7 +396,10 @@ def train(
 
     plot_progress(epochs, losses_train_dict, train_mode="train", mode=mode)
     plot_progress(epochs, losses_val_dict, train_mode="validation", mode=mode)
-    plot_comparison(model, mode=mode)
+    nrmse["id"] = plot_comparison(model, mode=mode)
+    nrmse["ood"] = plot_comparison(model, mode=mode, ood=True)
+
+    return nrmse
 
 
 def main(args: dict) -> None:
@@ -400,15 +409,30 @@ def main(args: dict) -> None:
     print(f"log_dir: {log_dir}")
     writer = tensorboard.SummaryWriter(log_dir=log_dir)
     print(f"device: {DEVICE}")
-    train(
-        epochs=args.epochs,
-        lr=args.learning_rate,
-        i_size=0,
-        b_size=args.num_boundary_data,
-        f_size=args.num_pde_data,
-        mode=args.mode,
-        log_dir=log_dir,
-        writer=writer,
+    nrmse = {"id": [], "ood": []}
+    for _ in range(args.num_iter):
+        nrmse_dict = train(
+            epochs=args.epochs,
+            lr=args.learning_rate,
+            i_size=0,
+            b_size=args.num_boundary_data,
+            f_size=args.num_pde_data,
+            mode=args.mode,
+            log_dir=log_dir,
+            writer=writer,
+        )
+        nrmse["id"].append(nrmse_dict["id"])
+        nrmse["ood"].append(nrmse_dict["ood"])
+
+    std_id = np.std(nrmse["id"])
+    std_ood = np.std(nrmse["ood"])
+    avg_id = np.mean(nrmse["id"])
+    avg_ood = np.mean(nrmse["ood"])
+    print(
+        f"ID | mean: {avg_id :.3f}, 95% CI: {avg_id - 1.96 * std_id / np.sqrt(args.num_iter): .3f} ~ {avg_id + 1.96 * std_id / np.sqrt(args.num_iter): .3f}"
+    )
+    print(
+        f"OOD | mean: {avg_ood :.3f}, 95% CI: {avg_ood - 1.96 * std_ood / np.sqrt(args.num_iter): .3f} ~ {avg_ood + 1.96 * std_ood / np.sqrt(args.num_iter): .3f}"
     )
 
 
@@ -433,7 +457,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=50000,
+        default=10000,
         help="number of epochs",
     )
     parser.add_argument(
@@ -444,6 +468,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--log_dir", type=str, default=None, help="directory to save to or load from"
+    )
+    parser.add_argument(
+        "--num_iter", type=int, default=5, help="how many times to iterate training"
     )
 
     main_args = parser.parse_args()

@@ -1,0 +1,9 @@
+*.png
+*.model
+[logs]/
+[fig_save]/
+[__pycache__]/
+[fig_1d]/
+[fig_burgers]/
+[fig_burgers_save]/
+[fig_save]/
