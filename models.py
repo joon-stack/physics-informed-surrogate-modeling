@@ -66,5 +66,3 @@ class hybrid_model(nn.Module):
 
         return func(f, target)
 
-    def save(self, epoch):
-        torch.save(self.state_dict(), f"{os.path.join(self.log_dir, 'state')}{epoch}.model")

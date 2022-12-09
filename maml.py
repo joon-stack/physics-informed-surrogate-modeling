@@ -1,8 +1,12 @@
 import torch
 import torch.nn as nn
 
+import wandb
+
 from tqdm import trange, tqdm
 from copy import deepcopy
+
+import os
 
 from models import hybrid_model
 from data import *
@@ -10,7 +14,7 @@ from metrics import *
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-VAL_INTERVAL = 100
+VAL_INTERVAL = 10
 LOG_INTERVAL = 10
 SAVE_INTERVAL = 100
 
@@ -275,6 +279,18 @@ class MAML:
         mean_nrmse_batch = np.mean(nrmse_batch, axis=0) if len(nrmse_batch) > 0 else 0
         return mean_inner_loss, mean_nrmse_batch
 
+    def save(self, ep, loss):
+        fname = f"{os.path.join(self.log_dir, 'state')}{ep}.model"
+        torch.save(
+            {
+                "epoch": ep,
+                "model_state_dict": self.model.state_dict(),
+                "optimizer_state_dict": self._optimizer.state_dict(),
+                "loss": loss,
+            },
+            fname,
+        )
+
     def train(self, train_steps, num_train_tasks, num_val_tasks):
         """Train the MAML.
 
@@ -293,19 +309,28 @@ class MAML:
 
         val_tasks = generate_tasks(num_val_tasks, low=0.001 / np.pi, high=0.1 / np.pi)
         inner_loss_val, nrmse_val = self._outer_loop(val_tasks, train=False)
-        print(
-            f"Validation before training pre-adaptation | Inner_loss: {inner_loss_val[0]:.4f} | NRMSE: {nrmse_val[0]:.4f}"
+        # print(
+        #     f"Validation before training pre-adaptation | Inner_loss: {inner_loss_val[0]:.4f} | NRMSE: {nrmse_val[0]:.4f}"
+        # )
+        wandb.log(
+            {
+                "inner_loss_pre_adapt_val": inner_loss_val[0],
+                "inner_loss_post_adapt_val": inner_loss_val[-1],
+                "nrmse_pre_adapt": nrmse_val[0],
+                "nrmse_post_adapt": nrmse_val[-1],
+                "ep": 0,
+            },
         )
 
-        val_loss["inner_loss_pre_adapt"].append(inner_loss_val[0])
-        nrmse["nrmse_val_pre_adapt"].append(nrmse_val[0])
+        # val_loss["inner_loss_pre_adapt"].append(inner_loss_val[0])
+        # nrmse["nrmse_val_pre_adapt"].append(nrmse_val[0])
 
-        print(
-            f"Validation before training post-adaptation | Inner_loss: {inner_loss_val[-1]:.4f} | NRMSE: {nrmse_val[-1]:.4f}"
-        )
+        # print(
+        #     f"Validation before training post-adaptation | Inner_loss: {inner_loss_val[-1]:.4f} | NRMSE: {nrmse_val[-1]:.4f}"
+        # )
 
-        val_loss["inner_loss_post_adapt"].append(inner_loss_val[-1])
-        nrmse["nrmse_val_post_adapt"].append(nrmse_val[-1])
+        # val_loss["inner_loss_post_adapt"].append(inner_loss_val[-1])
+        # nrmse["nrmse_val_post_adapt"].append(nrmse_val[-1])
 
         for i in trange(1, train_steps + 1):
             self._train_step += 1
@@ -317,23 +342,26 @@ class MAML:
 
             if i % SAVE_INTERVAL == 0:
                 print(f"Step {i} Model saved")
-                self.model.save(i)
-
-            if i % LOG_INTERVAL == 0:
-                print(f"Step {self._train_step} Pre-Adapt | Inner_loss: {inner_loss[0]:.4f}")
-                print(f"Step {self._train_step} Post-Adapt | Inner_loss: {inner_loss[-1]:.4f}")
+                self.save(i)
 
             if i % VAL_INTERVAL == 0:
                 inner_loss_val, nrmse_val = self._outer_loop(val_tasks, train=False)
-                val_loss["inner_loss_pre_adapt"].append(inner_loss_val[0])
-                nrmse["nrmse_val_pre_adapt"].append(nrmse_val[0])
-                val_loss["inner_loss_post_adapt"].append(inner_loss_val[-1])
-                nrmse["nrmse_val_post_adapt"].append(nrmse_val[-1])
-                print(
-                    f"Validation pre-adapt | Inner_loss: {inner_loss_val[0]:.4f} | NRMSE: {nrmse_val[0]:.4f}"
+                wandb.log(
+                    {
+                        "inner_loss_pre_adapt_val": inner_loss_val[0],
+                        "inner_loss_post_adapt_val": inner_loss_val[-1],
+                        "nrmse_pre_adapt": nrmse_val[0],
+                        "nrmse_post_adapt": nrmse_val[-1],
+                    },
+                    commit=False,
                 )
-                print(
-                    f"Validation post-adapt | Inner_loss: {inner_loss_val[-1]:.4f} | NRMSE: {nrmse_val[-1]:.4f}"
-                )
+
+            wandb.log(
+                {
+                    "ep": self._train_step,
+                    "inner_loss_pre_adapt": inner_loss[0],
+                    "inner_loss_post_adapt": inner_loss[-1],
+                }
+            )
 
         return train_loss, val_loss, nrmse, self.model
