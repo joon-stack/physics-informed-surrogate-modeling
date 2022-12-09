@@ -1,0 +1,1 @@
+{"inner_loss_pre_adapt_val": 0.6198426604270935, "inner_loss_post_adapt_val": 0.23077625334262847, "nrmse_pre_adapt": 1.2763408422470093, "nrmse_post_adapt": 3.3246140480041504, "ep": 37, "_timestamp": 1670561708.1711943, "_runtime": 160.98041129112244, "_step": 37, "inner_loss_pre_adapt": 0.6159061372280121, "inner_loss_post_adapt": 0.23162101656198503}
