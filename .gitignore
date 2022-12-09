@@ -9,6 +9,8 @@
 [fig_save]/
 [wandb]/
 *.log
+*.json
+*.wandb
 **/*.swp
 **/__pycache__
 data/**
