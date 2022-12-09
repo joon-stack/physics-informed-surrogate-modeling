@@ -140,7 +140,7 @@ class MAML:
 
         num_inner_steps = self._num_inner_steps
 
-        for _ in trange(1, num_inner_steps + 1):
+        for _ in range(1, num_inner_steps + 1):
             nrmse = (
                 compute_nrmse(
                     model_phi(in_train).cpu().detach().numpy(), y_train.cpu().detach().numpy()
@@ -208,7 +208,7 @@ class MAML:
         model_outer.to(self.device)
 
         loss_fn = nn.MSELoss()
-        for task in task_batch:
+        for task in tqdm(task_batch):
             support, query = task
             alpha = query
             phi, grad, loss_sup, nrmse = self._inner_loop(theta, support, train)
@@ -307,7 +307,7 @@ class MAML:
         val_loss["inner_loss_post_adapt"].append(inner_loss_val[-1])
         nrmse["nrmse_val_post_adapt"].append(nrmse_val[-1])
 
-        for i in range(1, train_steps + 1):
+        for i in trange(1, train_steps + 1):
             self._train_step += 1
             train_tasks = generate_tasks(num_train_tasks, low=NU_LOW, high=NU_HIGH)
             inner_loss, _ = self._outer_loop(train_tasks, train=True)
