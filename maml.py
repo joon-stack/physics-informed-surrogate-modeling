@@ -309,9 +309,6 @@ class MAML:
 
         val_tasks = generate_tasks(num_val_tasks, low=0.001 / np.pi, high=0.1 / np.pi)
         inner_loss_val, nrmse_val = self._outer_loop(val_tasks, train=False)
-        # print(
-        #     f"Validation before training pre-adaptation | Inner_loss: {inner_loss_val[0]:.4f} | NRMSE: {nrmse_val[0]:.4f}"
-        # )
         wandb.log(
             {
                 "inner_loss_pre_adapt_val": inner_loss_val[0],
@@ -321,16 +318,6 @@ class MAML:
                 "ep": 0,
             },
         )
-
-        # val_loss["inner_loss_pre_adapt"].append(inner_loss_val[0])
-        # nrmse["nrmse_val_pre_adapt"].append(nrmse_val[0])
-
-        # print(
-        #     f"Validation before training post-adaptation | Inner_loss: {inner_loss_val[-1]:.4f} | NRMSE: {nrmse_val[-1]:.4f}"
-        # )
-
-        # val_loss["inner_loss_post_adapt"].append(inner_loss_val[-1])
-        # nrmse["nrmse_val_post_adapt"].append(nrmse_val[-1])
 
         for i in trange(1, train_steps + 1):
             self._train_step += 1
@@ -342,7 +329,7 @@ class MAML:
 
             if i % SAVE_INTERVAL == 0:
                 print(f"Step {i} Model saved")
-                self.save(i)
+                self.save(i, inner_loss)
 
             if i % VAL_INTERVAL == 0:
                 inner_loss_val, nrmse_val = self._outer_loop(val_tasks, train=False)

@@ -23,3 +23,4 @@ config: {'project': 'maml_burgers', 'num_inner_steps': 10, 'num_outer_steps': 10
 2022-12-09 13:52:32,874 INFO    MainThread:35800 [wandb_run.py:_redirect():1903] Wrapping output streams.
 2022-12-09 13:52:32,874 INFO    MainThread:35800 [wandb_run.py:_redirect():1925] Redirects installed.
 2022-12-09 13:52:32,874 INFO    MainThread:35800 [wandb_init.py:init():765] run started, returning control to user process
+2022-12-09 13:59:30,335 WARNING MsgRouterThr:35800 [router.py:message_loop():77] message_loop has been closed
