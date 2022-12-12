@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+import wandb
+import os
+
+from tqdm import trange, tqdm
+
 from models import hybrid_model
 from maml import MAML
 
@@ -31,7 +36,19 @@ RANDOM = True
 
 VAL_INTERVAL = 100
 LOG_INTERVAL = 10
-SAVE_INTERVAL = 100
+SAVE_INTERVAL = 2
+
+
+def save(ep, model, optim, loss, fname):
+    torch.save(
+        {
+            "epoch": ep,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optim.state_dict(),
+            "loss": loss,
+        },
+        fname,
+    )
 
 
 def train(
@@ -61,6 +78,7 @@ def train(
     print(model)
 
     if mode == "data":
+        log_dir
         x_train, t_train, y_train = generate_data(
             mode=mode,
             num_x=x_d_size,
@@ -311,7 +329,8 @@ def train(
     nrmse = {"id": 0.0, "ood": 0.0}
 
     if mode == "data":
-        for epoch in range(1, epochs + 1):
+
+        for epoch in trange(1, epochs + 1):
             model.train()
 
             optim.zero_grad()
@@ -325,18 +344,18 @@ def train(
 
             losses_train += [loss_train.item()]
 
-            if epoch % LOG_INTERVAL == 0:
-                print(f"Epoch {epoch}: Loss {loss_train.item(): .3f}")
-
             if epoch % VAL_INTERVAL == 0:
                 model.eval()
-
                 loss_val = loss_func(y_val, model(in_val))
-                print(f"Validation loss {loss_val.item(): .3f}")
                 losses_val += [loss_val.item()]
+                wandb.log({"loss_val": loss_train.item()}, commit=False)
+
+            if epoch % LOG_INTERVAL == 0:
+                wandb.log({"ep": epoch, "loss_train": loss_train.item()})
 
             if epoch % SAVE_INTERVAL == 0:
-                model.save(epoch)
+                fname = (f"./logs/{mode}/step{epoch}.model",)
+                save(epoch, model, optim, loss_train.item(), fname)
 
     elif mode == "physics":
         losses_b_train = []

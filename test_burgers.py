@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.autograd as autograd
 import numpy as np
 import matplotlib.pyplot as plt
-from torch.utils import tensorboard
 
 from tqdm import trange, tqdm
 import wandb
@@ -43,7 +42,6 @@ def main(args: dict) -> None:
     if log_dir is None:
         log_dir = f"./logs/{args.mode}/{args.epochs}epochs_{args.learning_rate}lr_{args.num_supervised_x_data}x{args.num_supervised_t_data}data_{args.num_initial_data}data_i_{args.num_boundary_data}data_b_{args.num_x_data}x{args.num_t_data}data_f"
     print(f"log_dir: {log_dir}")
-    writer = tensorboard.SummaryWriter(log_dir=log_dir)
     print(f"device: {DEVICE}")
     nrmse = {"id": [], "ood": [], "id_maml": [], "ood_maml": []}
     for _ in range(args.num_iter):
@@ -58,7 +56,6 @@ def main(args: dict) -> None:
             t_size=args.num_t_data,
             mode=args.mode,
             log_dir=log_dir,
-            writer=writer,
             load=False,
         )
         nrmse["id"].append(nrmse_dict["id"])
@@ -138,6 +135,6 @@ if __name__ == "__main__":
         "--load", type=bool, default=False, help="whether to load pretrained model or not"
     )
 
-    main_args = parser.parse_args()
-    train_maml()
-    main(main_args)
+    cfg = parser.parse_args()
+    wandb.init(project=cfg.project, config=cfg)
+    main(cfg)

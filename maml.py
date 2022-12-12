@@ -280,7 +280,10 @@ class MAML:
         return mean_inner_loss, mean_nrmse_batch
 
     def save(self, ep, loss):
-        fname = f"{os.path.join(self.log_dir, 'state')}{ep}.model"
+        fpath = os.path.join(self.log_dir, "step/")
+        if not os.path.exists(fpath):
+            os.makedirs(fpath)
+        fname = os.path.join(fpath, f"{ep}.model")
         torch.save(
             {
                 "epoch": ep,
