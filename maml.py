@@ -455,6 +455,45 @@ class MAML_hybrid:
                 alpha=alpha,
             )
 
+            x_b_train, t_b_train, y_b_train = generate_data(
+                mode="boundary",
+                num_x=self.x_d_size,
+                num_t=self.t_d_size,
+                num_b=self.b_size,
+                num_i=self.i_size,
+                lb_x=LB_X,
+                rb_x=RB_X,
+                lb_t=LB_T,
+                rb_t=RB_T,
+                random=RANDOM,
+            )
+
+            x_i_train, t_i_train, y_i_train = generate_data(
+                mode="initial",
+                num_x=self.x_d_size,
+                num_t=self.t_d_size,
+                num_b=self.b_size,
+                num_i=self.i_size,
+                lb_x=LB_X,
+                rb_x=RB_X,
+                lb_t=LB_T,
+                rb_t=RB_T,
+                random=RANDOM,
+            )
+
+            x_f_train, t_f_train, y_f_train = generate_data(
+                mode="physics",
+                num_x=self.x_d_size,
+                num_t=self.t_d_size,
+                num_b=self.b_size,
+                num_i=self.i_size,
+                lb_x=LB_X,
+                rb_x=RB_X,
+                lb_t=LB_T,
+                rb_t=RB_T,
+                random=RANDOM,
+            )
+
         else:
             x_train, t_train, y_train = generate_data(
                 mode="data",
@@ -480,6 +519,35 @@ class MAML_hybrid:
 
         in_train = torch.hstack([x_train, t_train])
 
+        if train:
+            x_b_train = to_tensor(x_b_train)
+            t_b_train = to_tensor(t_b_train)
+            y_b_train = to_tensor(y_b_train)
+
+            x_i_train = to_tensor(x_i_train)
+            t_i_train = to_tensor(t_i_train)
+            y_i_train = to_tensor(y_i_train)
+
+            x_f_train = to_tensor(x_f_train)
+            t_f_train = to_tensor(t_f_train)
+            y_f_train = to_tensor(y_f_train)
+
+            x_b_train = x_b_train.to(DEVICE)
+            t_b_train = t_b_train.to(DEVICE)
+            y_b_train = y_b_train.to(DEVICE)
+
+            x_i_train = x_i_train.to(DEVICE)
+            t_i_train = t_i_train.to(DEVICE)
+            y_i_train = y_i_train.to(DEVICE)
+
+            x_f_train = x_f_train.to(DEVICE)
+            t_f_train = t_f_train.to(DEVICE)
+            y_f_train = y_f_train.to(DEVICE)
+
+            in_b_train = torch.hstack([x_b_train, t_b_train])
+            in_i_train = torch.hstack([x_i_train, t_i_train])
+            in_f_train = torch.hstack([x_f_train, t_f_train])
+
         num_inner_steps = self._num_inner_steps
 
         for _ in range(1, num_inner_steps + 1):
@@ -494,7 +562,11 @@ class MAML_hybrid:
                 nrmse_batch += [nrmse]
 
             opt_fn.zero_grad()
-            loss = loss_fn(y_train, model_phi(in_train))
+            loss_d = loss_fn(y_train, model_phi(in_train))
+            loss_i = loss_fn(y_i_train, model_phi(in_i_train)) if train else 0
+            loss_f = model_phi.calc_loss_f(in_f_train, y_f_train) if train else 0
+
+            loss = loss_d + loss_i + loss_f
             loss.to(DEVICE)
             loss.backward()
             opt_fn.step()
@@ -571,6 +643,32 @@ class MAML_hybrid:
                     random=RANDOM,
                     alpha=alpha,
                 )
+
+                x_i_train, t_i_train, y_i_train = generate_data(
+                    mode="initial",
+                    num_x=self.x_d_size,
+                    num_t=self.t_d_size,
+                    num_b=self.b_size,
+                    num_i=self.i_size,
+                    lb_x=LB_X,
+                    rb_x=RB_X,
+                    lb_t=LB_T,
+                    rb_t=RB_T,
+                    random=RANDOM,
+                )
+
+                x_f_train, t_f_train, y_f_train = generate_data(
+                    mode="physics",
+                    num_x=self.x_d_size,
+                    num_t=self.t_d_size,
+                    num_b=self.b_size,
+                    num_i=self.i_size,
+                    lb_x=LB_X,
+                    rb_x=RB_X,
+                    lb_t=LB_T,
+                    rb_t=RB_T,
+                    random=RANDOM,
+                )
             else:
                 x_train, t_train, y_train = generate_data(
                     mode="data",
@@ -596,7 +694,32 @@ class MAML_hybrid:
 
             in_train = torch.hstack([x_train, t_train])
 
-            loss = loss_fn(y_train, model_outer(in_train))
+            if train:
+
+                x_i_train = to_tensor(x_i_train)
+                t_i_train = to_tensor(t_i_train)
+                y_i_train = to_tensor(y_i_train)
+
+                x_f_train = to_tensor(x_f_train)
+                t_f_train = to_tensor(t_f_train)
+                y_f_train = to_tensor(y_f_train)
+
+                x_i_train = x_i_train.to(DEVICE)
+                t_i_train = t_i_train.to(DEVICE)
+                y_i_train = y_i_train.to(DEVICE)
+
+                x_f_train = x_f_train.to(DEVICE)
+                t_f_train = t_f_train.to(DEVICE)
+                y_f_train = y_f_train.to(DEVICE)
+
+                in_i_train = torch.hstack([x_i_train, t_i_train])
+                in_f_train = torch.hstack([x_f_train, t_f_train])
+
+            loss_d = loss_fn(y_train, model_outer(in_train))
+            loss_i = loss_fn(y_i_train, model_outer(in_i_train)) if train else 0
+            loss_f = model_outer.calc_loss_f(in_f_train, y_f_train) if train else 0
+
+            loss = loss_d + loss_i + loss_f
 
             grad = torch.autograd.grad(loss, model_outer.parameters()) if train else None
 

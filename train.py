@@ -8,7 +8,7 @@ import os
 from tqdm import trange, tqdm
 
 from models import hybrid_model
-from maml import MAML
+from maml import MAML, MAML_hybrid
 
 from metrics import compute_nrmse
 from data import generate_data, to_tensor
@@ -504,7 +504,7 @@ def train(
 
 def train_maml() -> None:
     log_dir = "./logs/maml/"
-    maml = MAML(10, 0.01, 0.01, log_dir, 5, 5, 0, 0)
+    maml = MAML_hybrid(10, 0.01, 0.01, log_dir, 5, 5, 0, 5)
     epochs = 1000
     train_loss, val_loss, nrmse, model = maml.train(epochs, 20, 5)
     plot_progress_maml(train_loss, epochs)

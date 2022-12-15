@@ -49,13 +49,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--b_size",
         type=int,
-        default=0,
+        default=5,
         help="number of boundary data (physics)",
     )
     parser.add_argument(
         "--i_size",
         type=int,
-        default=0,
+        default=5,
         help="number of initial data (physics)",
     )
     parser.add_argument(
@@ -81,7 +81,7 @@ if __name__ == "__main__":
 
     wandb.init(project=cfg.project, config=cfg)
 
-    maml = MAML(
+    maml = MAML_hybrid(
         cfg.num_inner_steps,
         cfg.inner_lr,
         cfg.outer_lr,
