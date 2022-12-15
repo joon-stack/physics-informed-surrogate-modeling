@@ -466,6 +466,7 @@ class MAML_hybrid:
                 lb_t=LB_T,
                 rb_t=RB_T,
                 random=RANDOM,
+                alpha=alpha,
             )
 
             x_i_train, t_i_train, y_i_train = generate_data(
@@ -479,6 +480,7 @@ class MAML_hybrid:
                 lb_t=LB_T,
                 rb_t=RB_T,
                 random=RANDOM,
+                alpha=alpha,
             )
 
             x_f_train, t_f_train, y_f_train = generate_data(
@@ -492,6 +494,7 @@ class MAML_hybrid:
                 lb_t=LB_T,
                 rb_t=RB_T,
                 random=RANDOM,
+                alpha=alpha,
             )
 
         else:
@@ -655,6 +658,7 @@ class MAML_hybrid:
                     lb_t=LB_T,
                     rb_t=RB_T,
                     random=RANDOM,
+                    alpha=alpha,
                 )
 
                 x_f_train, t_f_train, y_f_train = generate_data(
@@ -668,6 +672,7 @@ class MAML_hybrid:
                     lb_t=LB_T,
                     rb_t=RB_T,
                     random=RANDOM,
+                    alpha=alpha,
                 )
             else:
                 x_train, t_train, y_train = generate_data(
