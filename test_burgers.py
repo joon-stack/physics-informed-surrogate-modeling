@@ -45,7 +45,7 @@ def main(args: dict) -> None:
     print(f"device: {DEVICE}")
     nrmse = {"id": [], "ood": [], "id_maml": [], "ood_maml": []}
     for _ in range(args.num_iter):
-        nrmse_dict = train(
+        train(
             epochs=args.epochs,
             lr=args.learning_rate,
             x_d_size=args.num_supervised_x_data,
@@ -56,22 +56,22 @@ def main(args: dict) -> None:
             t_size=args.num_t_data,
             mode=args.mode,
             log_dir=log_dir,
-            load=False,
+            fpath=args.fpath,
         )
-        nrmse["id"].append(nrmse_dict["id"])
-        nrmse["ood"].append(nrmse_dict["ood"])
+        # nrmse["id"].append(nrmse_dict["id"])
+        # nrmse["ood"].append(nrmse_dict["ood"])
 
-    std_id = np.std(nrmse["id"])
-    std_ood = np.std(nrmse["ood"])
-    avg_id = np.mean(nrmse["id"])
-    avg_ood = np.mean(nrmse["ood"])
+    # std_id = np.std(nrmse["id"])
+    # std_ood = np.std(nrmse["ood"])
+    # avg_id = np.mean(nrmse["id"])
+    # avg_ood = np.mean(nrmse["ood"])
 
-    print(
-        f"ID | mean: {avg_id :.3f}, 95% CI: {avg_id - 1.96 * std_id / np.sqrt(args.num_iter): .3f} ~ {avg_id + 1.96 * std_id / np.sqrt(args.num_iter): .3f}"
-    )
-    print(
-        f"OOD | mean: {avg_ood :.3f}, 95% CI: {avg_ood - 1.96 * std_ood / np.sqrt(args.num_iter): .3f} ~ {avg_ood + 1.96 * std_ood / np.sqrt(args.num_iter): .3f}"
-    )
+    # print(
+    #     f"ID | mean: {avg_id :.3f}, 95% CI: {avg_id - 1.96 * std_id / np.sqrt(args.num_iter): .3f} ~ {avg_id + 1.96 * std_id / np.sqrt(args.num_iter): .3f}"
+    # )
+    # print(
+    #     f"OOD | mean: {avg_ood :.3f}, 95% CI: {avg_ood - 1.96 * std_ood / np.sqrt(args.num_iter): .3f} ~ {avg_ood + 1.96 * std_ood / np.sqrt(args.num_iter): .3f}"
+    # )
 
 
 if __name__ == "__main__":
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--learning_rate",
-        type=int,
+        type=float,
         default=0.01,
         help="learning rate",
     )
@@ -129,11 +129,10 @@ if __name__ == "__main__":
         "--log_dir", type=str, default=None, help="directory to save to or load from"
     )
     parser.add_argument(
-        "--num_iter", type=int, default=10, help="how many times to iterate training"
+        "--num_iter", type=int, default=1, help="how many times to iterate training"
     )
-    parser.add_argument(
-        "--load", type=bool, default=False, help="whether to load pretrained model or not"
-    )
+    parser.add_argument("--fpath", type=str, default=None, help="pre-trained model path")
+    parser.add_argument("--project", type=str, default="burgers", help="wandb project name")
 
     cfg = parser.parse_args()
     wandb.init(project=cfg.project, config=cfg)

@@ -10,6 +10,7 @@ from tqdm import trange, tqdm
 from models import hybrid_model
 from maml import MAML
 
+from metrics import compute_nrmse
 from data import generate_data, to_tensor
 from plot import (
     plot_progress,
@@ -32,11 +33,11 @@ LB_T_OOD = 0.0
 RB_T_OOD = 1.0
 
 NU = 0.01 / np.pi
-RANDOM = True
+RANDOM = False
 
-VAL_INTERVAL = 100
+VAL_INTERVAL = 10
 LOG_INTERVAL = 10
-SAVE_INTERVAL = 2
+SAVE_INTERVAL = 100
 
 
 def save(ep, model, optim, loss, fname):
@@ -61,24 +62,22 @@ def train(
     b_size: int,
     x_size: int,
     t_size: int,
-    load: bool,
+    fpath: str,
     mode: str = "physics",
 ) -> dict:
 
     print(f"Current Mode: {mode}")
     model = hybrid_model(neuron_size=5, layer_size=3, dim=2, log_dir=log_dir)
-    modelpath = "logs/maml/state1000.model"
-    print(load)
-    if load:
-        model.load_state_dict(torch.load(modelpath))
-        print("Model loaded")
+    # modelpath = "logs/maml/state1000.model"
+    if fpath:
+        model.load_state_dict(torch.load(fpath)["model_state_dict"])
+        print(f"Model loaded from {fpath}")
 
     optim = torch.optim.Adam(model.parameters(), lr=lr)
 
     print(model)
 
     if mode == "data":
-        log_dir
         x_train, t_train, y_train = generate_data(
             mode=mode,
             num_x=x_d_size,
@@ -329,6 +328,9 @@ def train(
     nrmse = {"id": 0.0, "ood": 0.0}
 
     if mode == "data":
+        fname = f"./logs/{mode}"
+        if not os.path.exists(fname):
+            os.makedirs(fname)
 
         for epoch in trange(1, epochs + 1):
             model.train()
@@ -348,21 +350,26 @@ def train(
                 model.eval()
                 loss_val = loss_func(y_val, model(in_val))
                 losses_val += [loss_val.item()]
-                wandb.log({"loss_val": loss_train.item()}, commit=False)
+                nrmse = compute_nrmse(
+                    model(in_val).cpu().detach().numpy(), y_val.cpu().detach().numpy()
+                )
+                wandb.log({"loss_val": loss_train.item(), "nrmse": nrmse}, commit=False)
 
-            if epoch % LOG_INTERVAL == 0:
-                wandb.log({"ep": epoch, "loss_train": loss_train.item()})
+            wandb.log({"ep": epoch, "loss_train": loss_train.item()})
 
             if epoch % SAVE_INTERVAL == 0:
-                fname = (f"./logs/{mode}/step{epoch}.model",)
+                fname = f"./logs/{mode}/step{epoch}.model"
                 save(epoch, model, optim, loss_train.item(), fname)
 
     elif mode == "physics":
+        fname = f"./logs/{mode}"
+        if not os.path.exists(fname):
+            os.makedirs(fname)
         losses_b_train = []
         losses_i_train = []
         losses_f_train = []
 
-        for epoch in range(1, epochs + 1):
+        for epoch in trange(1, epochs + 1):
             model.train()
 
             optim.zero_grad()
@@ -386,28 +393,41 @@ def train(
             losses_f_train += [loss_f_train.item()]
             losses_train += [loss_train.item()]
 
-            if epoch % LOG_INTERVAL == 0:
-                print(
-                    f"Epoch {epoch}: Boundary loss {loss_b_train.item(): .3f}, Initial loss {loss_i_train.item(): .3f}, PDE loss {loss_f_train.item(): .3f}, Total loss {loss_train.item(): .3f}"
-                )
-
             if epoch % VAL_INTERVAL == 0:
                 model.eval()
 
                 loss_val = loss_func(y_val, model(in_val))
-                print(f"Validation loss {loss_val.item(): .3f}")
+                # print(f"Validation loss {loss_val.item(): .3f}")
                 losses_val += [loss_val.item()]
+                nrmse = compute_nrmse(
+                    model(in_val).cpu().detach().numpy(), y_val.cpu().detach().numpy()
+                )
+                wandb.log({"loss_val": loss_train.item(), "nrmse": nrmse}, commit=False)
 
             if epoch % SAVE_INTERVAL == 0:
-                model.save(epoch)
+                fname = f"./logs/{mode}/step{epoch}.model"
+                save(epoch, model, optim, loss_train.item(), fname)
+
+            wandb.log(
+                {
+                    "ep": epoch,
+                    "loss_b_train": loss_b_train.item(),
+                    "loss_i_train": loss_i_train.item(),
+                    "loss_f_train": loss_f_train.item(),
+                    "loss_train": loss_train.item(),
+                }
+            )
 
     elif mode == "hybrid":
+        fname = f"./logs/{mode}"
+        if not os.path.exists(fname):
+            os.makedirs(fname)
         losses_d_train = []
         losses_b_train = []
         losses_i_train = []
         losses_f_train = []
 
-        for epoch in range(1, epochs + 1):
+        for epoch in trange(1, epochs + 1):
             model.train()
 
             optim.zero_grad()
@@ -435,20 +455,31 @@ def train(
             losses_f_train += [loss_f_train.item()]
             losses_train += [loss_train.item()]
 
-            if epoch % LOG_INTERVAL == 0:
-                print(
-                    f"Epoch {epoch}: Supervised loss {loss_d_train.item(): .3f}, Boundary loss {loss_b_train.item(): .3f}, Initial loss {loss_i_train.item(): .3f}, PDE loss {loss_f_train.item(): .3f}, Total loss {loss_train.item(): .3f}"
-                )
-
             if epoch % VAL_INTERVAL == 0:
                 model.eval()
 
                 loss_val = loss_func(y_val, model(in_val))
-                print(f"Validation loss {loss_val.item(): .3f}")
                 losses_val += [loss_val.item()]
 
+                nrmse = compute_nrmse(
+                    model(in_val).cpu().detach().numpy(), y_val.cpu().detach().numpy()
+                )
+                wandb.log({"loss_val": loss_train.item(), "nrmse": nrmse}, commit=False)
+
             if epoch % SAVE_INTERVAL == 0:
-                model.save(epoch)
+                fname = f"./logs/{mode}/step{epoch}.model"
+                save(epoch, model, optim, loss_train.item(), fname)
+
+            wandb.log(
+                {
+                    "ep": epoch,
+                    "loss_d_train": loss_d_train.item(),
+                    "loss_b_train": loss_b_train.item(),
+                    "loss_i_train": loss_i_train.item(),
+                    "loss_f_train": loss_f_train.item(),
+                    "loss_train": loss_train.item(),
+                }
+            )
 
     if mode == "data":
         losses_train_dict = {"total": losses_train}
@@ -468,12 +499,6 @@ def train(
 
     losses_val_dict = {"total": losses_val}
 
-    plot_progress(epochs, losses_train_dict, train_mode="train", mode=mode, maml=load)
-    plot_progress(epochs, losses_val_dict, train_mode="validation", mode=mode, maml=load)
-    nrmse_id = plot_comparison(model, mode=mode, maml=load)
-    nrmse_ood = plot_comparison(model, mode=mode, maml=load, ood=True)
-    nrmse["id"] = nrmse_id
-    nrmse["ood"] = nrmse_ood
     return nrmse
 
 

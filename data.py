@@ -21,6 +21,9 @@ NU_HIGH = 0.1 / np.pi
 
 
 def generate_y(x: np.array, t: np.array, xn: int, tn: int, alpha: NU) -> np.array:
+    # xn = xn - 1
+    # tn = tn - 1
+
     y = burgers_viscous_time_exact1(alpha, xn, x, tn, t).T.reshape(-1, 1)
     return y
 
