@@ -16,13 +16,12 @@ RANDOM = False
 
 NU = 0.01 / np.pi
 
-NU_LOW = 0.001 / np.pi
-NU_HIGH = 0.1 / np.pi
-
 
 def generate_y(x: np.array, t: np.array, xn: int, tn: int, alpha: NU) -> np.array:
     # xn = xn - 1
     # tn = tn - 1
+    xn = len(x)
+    tn = len(t)
 
     y = burgers_viscous_time_exact1(alpha, xn, x, tn, t).T.reshape(-1, 1)
     return y
@@ -35,6 +34,13 @@ def generate_y_boundary(shape: tuple) -> np.array:
 def generate_y_initial(x: np.array) -> np.array:
     y = -np.sin(np.pi * x)
     return y
+
+
+def lhs(lb: float, rb: float, interval: float, num: int):
+    res = np.array(
+        [np.random.uniform(lb + i * interval, lb + (i + 1) * interval, 1) for i in range(num)]
+    ).squeeze()
+    return res
 
 
 def generate_data(
@@ -55,12 +61,14 @@ def generate_data(
     x = (
         np.random.uniform(lb_x, rb_x, num_x)
         if random
-        else np.arange(lb_x, rb_x + interval_x, interval_x)
+        # else np.arange(lb_x, rb_x + interval_x, interval_x)
+        else lhs(lb_x, rb_x, interval_x, num_x)
     )
     t = (
         np.random.uniform(lb_t, rb_t, num_t)
         if random
-        else np.arange(lb_t, rb_t + interval_t, interval_t)
+        # else np.arange(lb_t, rb_t + interval_t, interval_t)
+        else lhs(lb_t, rb_t, interval_t, num_t)
     )
 
     if mode == "data":
@@ -80,20 +88,24 @@ def generate_data(
         t = (
             np.random.uniform(lb_t, rb_t, num_b // 2)
             if random
-            else np.arange(lb_t, rb_t + interval_t, interval_t)
+            # else np.arange(lb_t, rb_t + interval_t, interval_t)
+            else lhs(lb_t, rb_t, interval_t, num_b // 2)
         )
         t = np.hstack([t, t])
         x = np.vstack([np.full(t.shape[0] // 2, lb_x), np.full(t.shape[0] - t.shape[0] // 2, rb_x)])
         y = generate_y_boundary(t.shape[0])
+        # print(y.shape)
 
     elif mode == "initial":
         x = (
             np.random.uniform(lb_x, rb_x, num_i)
             if random
-            else np.arange(lb_x, rb_x + interval_x, interval_x)
+            # else np.arange(lb_x, rb_x + interval_x, interval_x)
+            else lhs(lb_x, rb_x, interval_x, num_i)
         )
         t = np.zeros(x.shape[0])
         y = generate_y_initial(x)
+        # print(y.shape)
 
     return x, t, y
 
@@ -121,7 +133,7 @@ def generate_tasks(size: int, low: float, high: float):
     for _ in range(size):
         alpha_lb, alpha_rb = low, high
 
-        alpha_sup = np.random.uniform(low=low, high=high, size=1)
+        alpha_sup = np.exp(np.random.uniform(low=low, high=high, size=1)) / np.pi
         alpha_qry = alpha_sup
         task = (alpha_sup, alpha_qry)
         tasks.append(task)

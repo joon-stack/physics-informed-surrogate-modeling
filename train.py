@@ -33,7 +33,7 @@ LB_T_OOD = 0.0
 RB_T_OOD = 1.0
 
 NU = 0.01 / np.pi
-RANDOM = False
+RANDOM = True
 
 VAL_INTERVAL = 10
 LOG_INTERVAL = 10
@@ -67,7 +67,7 @@ def train(
 ) -> dict:
 
     print(f"Current Mode: {mode}")
-    model = hybrid_model(neuron_size=5, layer_size=3, dim=2, log_dir=log_dir)
+    model = hybrid_model(neuron_size=5, layer_size=6, dim=2, log_dir=log_dir)
     # modelpath = "logs/maml/state1000.model"
     if fpath:
         model.load_state_dict(torch.load(fpath)["model_state_dict"])
@@ -191,7 +191,7 @@ def train(
             rb_x=RB_X,
             lb_t=LB_T,
             rb_t=RB_T,
-            random=RANDOM,
+            random=False,
         )
         x_val = to_tensor(x_val)
         t_val = to_tensor(t_val)
@@ -358,8 +358,7 @@ def train(
             wandb.log({"ep": epoch, "loss_train": loss_train.item()})
 
             if epoch % SAVE_INTERVAL == 0:
-                fname = f"./logs/{mode}/step{epoch}.model"
-                save(epoch, model, optim, loss_train.item(), fname)
+                pass
 
     elif mode == "physics":
         fname = f"./logs/{mode}"
@@ -405,8 +404,7 @@ def train(
                 wandb.log({"loss_val": loss_train.item(), "nrmse": nrmse}, commit=False)
 
             if epoch % SAVE_INTERVAL == 0:
-                fname = f"./logs/{mode}/step{epoch}.model"
-                save(epoch, model, optim, loss_train.item(), fname)
+                pass
 
             wandb.log(
                 {
@@ -433,7 +431,7 @@ def train(
             optim.zero_grad()
 
             loss_d_train = loss_func(y_train, model(in_train))
-            loss_b_train = 0 * loss_func(y_b_train, model(in_b_train))
+            loss_b_train = loss_func(y_b_train, model(in_b_train))
             loss_i_train = loss_func(y_i_train, model(in_i_train))
 
             loss_f_train = model.calc_loss_f(in_f_train, y_f_train)
@@ -468,7 +466,7 @@ def train(
 
             if epoch % SAVE_INTERVAL == 0:
                 fname = f"./logs/{mode}/step{epoch}.model"
-                save(epoch, model, optim, loss_train.item(), fname)
+                # save(epoch, model, optim, loss_train.item(), fname)
 
             wandb.log(
                 {
@@ -498,7 +496,8 @@ def train(
         }
 
     losses_val_dict = {"total": losses_val}
-
+    fname = os.path.join(wandb.run.dir, "model.h5")
+    save(epoch, model, optim, loss_train.item(), fname)
     return nrmse
 
 

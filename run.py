@@ -49,19 +49,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--b_size",
         type=int,
-        default=5,
+        default=100,
         help="number of boundary data (physics)",
     )
     parser.add_argument(
         "--i_size",
         type=int,
-        default=5,
+        default=100,
         help="number of initial data (physics)",
     )
     parser.add_argument(
         "--inner_lr",
         type=float,
-        default=0.01,
+        default=0.001,
         help="learning rate of inner steps",
     )
     parser.add_argument(
@@ -80,8 +80,7 @@ if __name__ == "__main__":
     cfg = parser.parse_args()
 
     wandb.init(project=cfg.project, config=cfg)
-
-    maml = MAML_hybrid(
+    maml = MAML(
         cfg.num_inner_steps,
         cfg.inner_lr,
         cfg.outer_lr,
@@ -91,4 +90,14 @@ if __name__ == "__main__":
         cfg.b_size,
         cfg.i_size,
     )
+    # maml = MAML_hybrid(
+    #     cfg.num_inner_steps,
+    #     cfg.inner_lr,
+    #     cfg.outer_lr,
+    #     cfg.log_dir,
+    #     cfg.x_d_size,
+    #     cfg.t_d_size,
+    #     cfg.b_size,
+    #     cfg.i_size,
+    # )
     maml.train(cfg.num_outer_steps, cfg.num_train_tasks, cfg.num_val_tasks)

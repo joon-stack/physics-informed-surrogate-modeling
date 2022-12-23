@@ -18,6 +18,14 @@ VAL_INTERVAL = 10
 LOG_INTERVAL = 10
 SAVE_INTERVAL = 100
 
+# NU_LOW = 0.001 / np.pi
+# NU_HIGH = 0.02 / np.pi
+
+NU_LOW = -3
+NU_HIGH = -1
+
+RANDOM = True
+
 
 class MAML:
     def __init__(
@@ -44,11 +52,13 @@ class MAML:
 
         print("Initializing MAML surrogate model")
 
-        self.model = hybrid_model(neuron_size=5, layer_size=3, dim=2, log_dir=log_dir)
+        self.model = hybrid_model(neuron_size=100, layer_size=6, dim=2, log_dir=log_dir)
         print("Current device: ", DEVICE)
         print(self.model)
         self.model.to(DEVICE)
         self.device = DEVICE
+
+        print(f"Random: {RANDOM}")
 
         self._num_inner_steps = num_inner_steps
 
@@ -310,7 +320,7 @@ class MAML:
 
         nrmse = {"nrmse_val_post_adapt": [], "nrmse_val_pre_adapt": []}
 
-        val_tasks = generate_tasks(num_val_tasks, low=0.001 / np.pi, high=0.1 / np.pi)
+        val_tasks = generate_tasks(num_val_tasks, low=NU_LOW, high=NU_HIGH / np.pi)
         inner_loss_val, nrmse_val = self._outer_loop(val_tasks, train=False)
         wandb.log(
             {
@@ -381,8 +391,8 @@ class MAML_hybrid:
         """
 
         print("Initializing MAML surrogate model")
-
-        self.model = hybrid_model(neuron_size=5, layer_size=3, dim=2, log_dir=log_dir)
+        self.model = hybrid_model(neuron_size=5, layer_size=6, dim=2, log_dir=log_dir)
+        # self.model = hybrid_model(neuron_size=5, layer_size=3, dim=2, log_dir=log_dir)
         print("Current device: ", DEVICE)
         print(self.model)
         self.model.to(DEVICE)
@@ -566,10 +576,11 @@ class MAML_hybrid:
 
             opt_fn.zero_grad()
             loss_d = loss_fn(y_train, model_phi(in_train))
+            loss_b = loss_fn(y_b_train, model_phi(in_b_train)) if train else 0
             loss_i = loss_fn(y_i_train, model_phi(in_i_train)) if train else 0
             loss_f = model_phi.calc_loss_f(in_f_train, y_f_train) if train else 0
 
-            loss = loss_d + loss_i + loss_f
+            loss = loss_d + loss_b + loss_i + loss_f
             loss.to(DEVICE)
             loss.backward()
             opt_fn.step()
@@ -647,6 +658,20 @@ class MAML_hybrid:
                     alpha=alpha,
                 )
 
+                x_b_train, t_b_train, y_b_train = generate_data(
+                    mode="boundary",
+                    num_x=self.x_d_size,
+                    num_t=self.t_d_size,
+                    num_b=self.b_size,
+                    num_i=self.i_size,
+                    lb_x=LB_X,
+                    rb_x=RB_X,
+                    lb_t=LB_T,
+                    rb_t=RB_T,
+                    random=RANDOM,
+                    alpha=alpha,
+                )
+
                 x_i_train, t_i_train, y_i_train = generate_data(
                     mode="initial",
                     num_x=self.x_d_size,
@@ -701,6 +726,10 @@ class MAML_hybrid:
 
             if train:
 
+                x_b_train = to_tensor(x_b_train)
+                t_b_train = to_tensor(t_b_train)
+                y_b_train = to_tensor(y_b_train)
+
                 x_i_train = to_tensor(x_i_train)
                 t_i_train = to_tensor(t_i_train)
                 y_i_train = to_tensor(y_i_train)
@@ -708,6 +737,10 @@ class MAML_hybrid:
                 x_f_train = to_tensor(x_f_train)
                 t_f_train = to_tensor(t_f_train)
                 y_f_train = to_tensor(y_f_train)
+
+                x_b_train = x_b_train.to(DEVICE)
+                t_b_train = t_b_train.to(DEVICE)
+                y_b_train = y_b_train.to(DEVICE)
 
                 x_i_train = x_i_train.to(DEVICE)
                 t_i_train = t_i_train.to(DEVICE)
@@ -717,14 +750,16 @@ class MAML_hybrid:
                 t_f_train = t_f_train.to(DEVICE)
                 y_f_train = y_f_train.to(DEVICE)
 
+                in_b_train = torch.hstack([x_b_train, t_b_train])
                 in_i_train = torch.hstack([x_i_train, t_i_train])
                 in_f_train = torch.hstack([x_f_train, t_f_train])
 
             loss_d = loss_fn(y_train, model_outer(in_train))
+            loss_b = loss_fn(y_b_train, model_outer(in_b_train)) if train else 0
             loss_i = loss_fn(y_i_train, model_outer(in_i_train)) if train else 0
             loss_f = model_outer.calc_loss_f(in_f_train, y_f_train) if train else 0
 
-            loss = loss_d + loss_i + loss_f
+            loss = loss_d + loss_b + loss_i + loss_f
 
             grad = torch.autograd.grad(loss, model_outer.parameters()) if train else None
 
@@ -746,10 +781,8 @@ class MAML_hybrid:
         return mean_inner_loss, mean_nrmse_batch
 
     def save(self, ep, loss):
-        fpath = os.path.join(self.log_dir, "step/")
-        if not os.path.exists(fpath):
-            os.makedirs(fpath)
-        fname = os.path.join(fpath, f"{ep}.model")
+
+        fname = os.path.join(wandb.run.dir, "model.h5")
         torch.save(
             {
                 "epoch": ep,
@@ -776,7 +809,7 @@ class MAML_hybrid:
 
         nrmse = {"nrmse_val_post_adapt": [], "nrmse_val_pre_adapt": []}
 
-        val_tasks = generate_tasks(num_val_tasks, low=0.001 / np.pi, high=0.1 / np.pi)
+        val_tasks = generate_tasks(num_val_tasks, low=NU_LOW, high=NU_HIGH)
         inner_loss_val, nrmse_val = self._outer_loop(val_tasks, train=False)
         wandb.log(
             {
@@ -797,8 +830,9 @@ class MAML_hybrid:
             train_loss["inner_loss_post_adapt"].append(inner_loss[-1])
 
             if i % SAVE_INTERVAL == 0:
-                print(f"Step {i} Model saved")
-                self.save(i, inner_loss)
+                # print(f"Step {i} Model saved")
+                # self.save(i, inner_loss)
+                pass
 
             if i % VAL_INTERVAL == 0:
                 inner_loss_val, nrmse_val = self._outer_loop(val_tasks, train=False)
@@ -819,5 +853,7 @@ class MAML_hybrid:
                     "inner_loss_post_adapt": inner_loss[-1],
                 }
             )
+
+            self.save(i, inner_loss)
 
         return train_loss, val_loss, nrmse, self.model

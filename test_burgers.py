@@ -92,13 +92,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_boundary_data",
         type=int,
-        default=10,
+        default=100,
         help="number of boundary data (physics-informed learning)",
     )
     parser.add_argument(
         "--num_initial_data",
         type=int,
-        default=10,
+        default=100,
         help="number of initial data (physics-informed learning)",
     )
     parser.add_argument(
