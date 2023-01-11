@@ -35,7 +35,7 @@ RB_T_OOD = 1.0
 NU = 0.01 / np.pi
 RANDOM = True
 
-VAL_INTERVAL = 10
+VAL_INTERVAL = 1
 LOG_INTERVAL = 10
 SAVE_INTERVAL = 100
 
@@ -499,13 +499,3 @@ def train(
     fname = os.path.join(wandb.run.dir, "model.h5")
     save(epoch, model, optim, loss_train.item(), fname)
     return nrmse
-
-
-def train_maml() -> None:
-    log_dir = "./logs/maml/"
-    maml = MAML_hybrid(10, 0.01, 0.01, log_dir, 5, 5, 0, 5)
-    epochs = 1000
-    train_loss, val_loss, nrmse, model = maml.train(epochs, 20, 5)
-    plot_progress_maml(train_loss, epochs)
-    plot_validation_maml(val_loss, epochs)
-    plot_nrmse_maml(nrmse, epochs)

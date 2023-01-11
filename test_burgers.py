@@ -13,7 +13,7 @@ from burgers import *
 
 from copy import deepcopy
 
-from train import train, train_maml
+from train import train
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 VAL_INTERVAL = 100
@@ -58,20 +58,6 @@ def main(args: dict) -> None:
             log_dir=log_dir,
             fpath=args.fpath,
         )
-        # nrmse["id"].append(nrmse_dict["id"])
-        # nrmse["ood"].append(nrmse_dict["ood"])
-
-    # std_id = np.std(nrmse["id"])
-    # std_ood = np.std(nrmse["ood"])
-    # avg_id = np.mean(nrmse["id"])
-    # avg_ood = np.mean(nrmse["ood"])
-
-    # print(
-    #     f"ID | mean: {avg_id :.3f}, 95% CI: {avg_id - 1.96 * std_id / np.sqrt(args.num_iter): .3f} ~ {avg_id + 1.96 * std_id / np.sqrt(args.num_iter): .3f}"
-    # )
-    # print(
-    #     f"OOD | mean: {avg_ood :.3f}, 95% CI: {avg_ood - 1.96 * std_ood / np.sqrt(args.num_iter): .3f} ~ {avg_ood + 1.96 * std_ood / np.sqrt(args.num_iter): .3f}"
-    # )
 
 
 if __name__ == "__main__":
@@ -80,13 +66,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_supervised_x_data",
         type=int,
-        default=5,
+        default=3,
         help="number of labeled x data (supervised learning)",
     )
     parser.add_argument(
         "--num_supervised_t_data",
         type=int,
-        default=5,
+        default=3,
         help="number of labeled t data (supervised learning)",
     )
     parser.add_argument(
@@ -122,7 +108,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.01,
+        default=0.001,
         help="learning rate",
     )
     parser.add_argument(
@@ -132,8 +118,10 @@ if __name__ == "__main__":
         "--num_iter", type=int, default=1, help="how many times to iterate training"
     )
     parser.add_argument("--fpath", type=str, default=None, help="pre-trained model path")
-    parser.add_argument("--project", type=str, default="burgers", help="wandb project name")
-
+    parser.add_argument("--project", type=str, default="burgers_0.001", help="wandb project name")
+    parser.add_argument("--run_name", type=str, default=None, help="wandb run name")
     cfg = parser.parse_args()
     wandb.init(project=cfg.project, config=cfg)
+    if cfg.run_name != None:
+        wandb.run.name = cfg.run_name
     main(cfg)

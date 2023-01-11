@@ -40,6 +40,8 @@ def lhs(lb: float, rb: float, interval: float, num: int):
     res = np.array(
         [np.random.uniform(lb + i * interval, lb + (i + 1) * interval, 1) for i in range(num)]
     ).squeeze()
+    if res.ndim < 1:
+        return [res]
     return res
 
 
@@ -55,7 +57,7 @@ def generate_data(
     rb_t: float,
     random: bool,
     alpha: float = NU,
-) -> tuple[np.array, np.array]:
+) -> tuple[np.array, np.array, np.array]:
     interval_x = (rb_x - lb_x) / num_x
     interval_t = (rb_t - lb_t) / num_t
     x = (
@@ -131,11 +133,48 @@ def generate_tasks(size: int, low: float, high: float):
 
     tasks = []
     for _ in range(size):
-        alpha_lb, alpha_rb = low, high
 
-        alpha_sup = np.exp(np.random.uniform(low=low, high=high, size=1)) / np.pi
-        alpha_qry = alpha_sup
+        alpha_sup = np.power(10, np.random.uniform(low=low, high=high, size=1)) / np.pi
+        alpha_qry = np.power(10, np.random.uniform(low=low, high=high, size=1)) / np.pi
+
         task = (alpha_sup, alpha_qry)
         tasks.append(task)
 
     return tasks
+
+
+def generate_task_data(
+    tasks: list,
+    num_x: int,
+    num_t: int,
+    num_b: int,
+    num_i: int,
+    mode: str,
+    lb_x: float,
+    rb_x: float,
+    lb_t: float,
+    rb_t: float,
+):
+    support_key = []
+    query_key = []
+    support_data = []
+    query_data = []
+    for task in tasks:
+        sup, qry = task
+
+        data = generate_data(
+            mode, num_x, num_t, num_b, num_i, lb_x, rb_x, lb_t, rb_t, random=False, alpha=sup[0]
+        )
+        support_key.append(sup[0])
+        support_data.append(data)
+
+        data = generate_data(
+            mode, num_x, num_t, num_b, num_i, lb_x, rb_x, lb_t, rb_t, random=False, alpha=qry[0]
+        )
+        query_key.append(qry[0])
+        query_data.append(data)
+
+        support = (support_key, support_data)
+        query = (query_key, query_data)
+
+    return (support, query)
