@@ -55,7 +55,8 @@ class MAML:
 
         print("Initializing MAML surrogate model")
 
-        self.model = hybrid_model(neuron_size=5, layer_size=6, dim=2, log_dir=log_dir)
+        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
+        self.model = nn.DataParallel(self.model)
         print("Current device: ", DEVICE)
         print(self.model)
         self.model.to(DEVICE)
@@ -388,7 +389,8 @@ class MAML_hybrid:
         """
 
         print("Initializing MAML surrogate model")
-        self.model = hybrid_model(neuron_size=5, layer_size=6, dim=2, log_dir=log_dir)
+        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
+        # self.model = nn.DataParallel(self.model)
         # self.model = hybrid_model(neuron_size=5, layer_size=3, dim=2, log_dir=log_dir)
         print("Current device: ", DEVICE)
         print(self.model)

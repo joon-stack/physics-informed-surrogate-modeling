@@ -14,7 +14,10 @@ RB_T_OOD = 1.0
 
 RANDOM = False
 
-NU = 0.01 / np.pi
+NU_LOW = 0.001 / np.pi
+NU_HIGH = 0.1 / np.pi
+
+NU = np.random.uniform(NU_LOW, NU_HIGH, 1)
 
 
 def generate_y(x: np.array, t: np.array, xn: int, tn: int, alpha: NU) -> np.array:

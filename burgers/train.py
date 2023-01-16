@@ -67,7 +67,13 @@ def train(
 ) -> dict:
 
     print(f"Current Mode: {mode}")
+    # model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
     model = hybrid_model(neuron_size=5, layer_size=6, dim=2, log_dir=log_dir)
+
+    if mode == "data":
+        model = nn.DataParallel(model)
+    # print(torch.load(fpath)["model_state_dict"])
+    # model = hybrid_model(neuron_size=5, layer_size=6, dim=2, log_dir=log_dir)
     # modelpath = "logs/maml/state1000.model"
     if fpath:
         model.load_state_dict(torch.load(fpath)["model_state_dict"])

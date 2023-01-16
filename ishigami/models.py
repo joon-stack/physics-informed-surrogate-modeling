@@ -5,11 +5,10 @@ import os
 import numpy as np
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-NU = 0.01 / np.pi
 
 
 class hybrid_model(nn.Module):
-    def __init__(self, neuron_size: int, layer_size: int, dim: int, log_dir: str) -> None:
+    def __init__(self, neuron_size: int, layer_size: int, dim: int) -> None:
 
         super(hybrid_model, self).__init__()
 
@@ -28,7 +27,6 @@ class hybrid_model(nn.Module):
         self.module1 = nn.Sequential(*layers)
 
         self.device = DEVICE
-        self.log_dir = log_dir
 
     def forward(self, data: torch.Tensor) -> torch.Tensor:
         act_func = nn.Tanh()
@@ -51,18 +49,17 @@ class hybrid_model(nn.Module):
             return 0
 
         u_hat = self(data)
-        x = data[:, 0].reshape(-1, 1)
-        t = data[:, 1].reshape(-1, 1)
+        x1 = data[:, 0].reshape(-1, 1)
+        x2 = data[:, 1].reshape(-1, 1)
+        x3 = data[:, 2].reshape(-1, 1)
 
         deriv_1 = autograd.grad(u_hat.sum(), data, create_graph=True)
-        u_hat_x = deriv_1[0][:, 0].reshape(-1, 1)
-        u_hat_t = deriv_1[0][:, 1].reshape(-1, 1)
-        deriv_2 = autograd.grad(u_hat_x.sum(), data, create_graph=True)
-        u_hat_x_x = deriv_2[0][:, 0].reshape(-1, 1)
+        u_hat_x1 = deriv_1[0][:, 0].reshape(-1, 1)
+        deriv_2 = autograd.grad(u_hat_x1.sum(), data, create_graph=True)
+        u_hat_x1_x1 = deriv_2[0][:, 0].reshape(-1, 1)
 
         # modify here
-        f = u_hat_t + u_hat * u_hat_x - NU * u_hat_x_x
+        f = u_hat + u_hat_x1_x1
         func = nn.MSELoss()
 
         return func(f, target)
-
