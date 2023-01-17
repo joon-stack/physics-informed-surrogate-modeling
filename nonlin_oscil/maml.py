@@ -13,7 +13,7 @@ from models import hybrid_model
 from data import *
 from metrics import *
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 VAL_INTERVAL = 10
 LOG_INTERVAL = 10
@@ -34,11 +34,7 @@ class MAML:
         num_inner_steps,
         inner_lr,
         outer_lr,
-        log_dir,
-        x_d_size,
-        t_d_size,
-        b_size,
-        i_size,
+        x_size,
         sampled_tasks_size,
         sampled_data_size,
     ):
@@ -55,8 +51,8 @@ class MAML:
 
         print("Initializing MAML surrogate model")
 
-        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
-        self.model = nn.DataParallel(self.model)
+        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=3)
+        # self.model = nn.DataParallel(self.model)
         print("Current device: ", DEVICE)
         print(self.model)
         self.model.to(DEVICE)
@@ -70,18 +66,12 @@ class MAML:
         self._outer_lr = outer_lr
         self._optimizer = torch.optim.Adam(self.model.parameters(), lr=self._outer_lr)
 
-        self.x_d_size = x_d_size
-        self.t_d_size = t_d_size
-        self.b_size = b_size
-        self.i_size = i_size
-
+        self.x_size = x_size
 
         self.sampled_tasks_size = sampled_tasks_size
         self.sampled_data_size = sampled_data_size
 
         self._train_step = 0
-
-        self.log_dir = log_dir
 
         print("Finished initialization of MAML-PINN model")
 
@@ -120,51 +110,45 @@ class MAML:
 
         # alpha = support
 
-        x_train, t_train, y_train = support
+        x_train, y_train = support
 
         x_train = to_tensor(x_train)
-        t_train = to_tensor(t_train)
-        y_train = to_tensor(y_train)
+        y_train = to_tensor(y_train).reshape(-1, 1)
 
         x_train = x_train.to(DEVICE)
-        t_train = t_train.to(DEVICE)
         y_train = y_train.to(DEVICE)
-
-        in_train = torch.hstack([x_train, t_train])
 
         num_inner_steps = self._num_inner_steps
 
         for _ in range(1, num_inner_steps + 1):
-            nrmse = (
-                compute_nrmse(
-                    model_phi(in_train).cpu().detach().numpy(), y_train.cpu().detach().numpy()
+            mse = (
+                compute_mse(
+                    model_phi(x_train).cpu().detach().numpy(), y_train.cpu().detach().numpy()
                 )
                 if not train
                 else None
             )
             if not train:
-                nrmse_batch += [nrmse]
+                nrmse_batch += [mse]
 
             opt_fn.zero_grad()
-            loss = loss_fn(y_train, model_phi(in_train))
+            loss = loss_fn(y_train, model_phi(x_train))
             loss.to(DEVICE)
             loss.backward()
             opt_fn.step()
             inner_loss += [loss.item()]
 
-        loss = loss_fn(y_train, model_phi(in_train))
+        loss = loss_fn(y_train, model_phi(x_train))
         inner_loss += [loss.item()]
         grad = torch.autograd.grad(loss, model_phi.parameters()) if train else None
         phi = model_phi.state_dict()
-        nrmse = (
-            compute_nrmse(
-                model_phi(in_train).cpu().detach().numpy(), y_train.cpu().detach().numpy()
-            )
+        mse = (
+            compute_mse(model_phi(x_train).cpu().detach().numpy(), y_train.cpu().detach().numpy())
             if not train
             else None
         )
         if not train:
-            nrmse_batch += [nrmse]
+            nrmse_batch += [mse]
 
         assert phi != None
         assert len(inner_loss) == num_inner_steps + 1
@@ -208,7 +192,6 @@ class MAML:
         qry_key, qry_data = qry
 
         sampled_sup = random.sample(sup_data, self.sampled_tasks_size)
-
         sampled_qry = random.sample(qry_data, self.sampled_tasks_size)
 
         for idx in tqdm(range(len(sampled_sup))):
@@ -217,31 +200,25 @@ class MAML:
 
             data_idx = random.sample(range(len(sup[0])), self.sampled_data_size)
             x_sup = sup[0][data_idx]
-            t_sup = sup[1][data_idx]
-            y_sup = sup[2][data_idx]
+            y_sup = sup[1][data_idx]
 
-            sup = (x_sup, t_sup, y_sup)
+            sup = (x_sup, y_sup)
 
-            phi, grad, loss_sup, nrmse = self._inner_loop(theta, sup, train)
+            phi, grad, loss_sup, mse = self._inner_loop(theta, sup, train)
             inner_loss.append(loss_sup)
 
             model_outer.load_state_dict(phi)
             data_idx = random.sample(range(len(qry[0])), self.sampled_data_size)
             x_train = qry[0][data_idx]
-            t_train = qry[1][data_idx]
-            y_train = qry[2][data_idx]
+            y_train = qry[1][data_idx]
 
             x_train = to_tensor(x_train)
-            t_train = to_tensor(t_train)
-            y_train = to_tensor(y_train)
+            y_train = to_tensor(y_train).reshape(-1, 1)
 
             x_train = x_train.to(DEVICE)
-            t_train = t_train.to(DEVICE)
             y_train = y_train.to(DEVICE)
 
-            in_train = torch.hstack([x_train, t_train])
-
-            loss = loss_fn(y_train, model_outer(in_train))
+            loss = loss_fn(y_train, model_outer(x_train))
 
             grad = torch.autograd.grad(loss, model_outer.parameters()) if train else None
 
@@ -249,7 +226,7 @@ class MAML:
                 for g_sum, g in zip(grad_sum, grad):
                     g_sum += g
             else:
-                nrmse_batch += [nrmse]
+                nrmse_batch += [mse]
 
         if train:
             for g in grad_sum:
@@ -291,18 +268,9 @@ class MAML:
 
         nrmse = {"nrmse_val_post_adapt": [], "nrmse_val_pre_adapt": []}
 
-        val_tasks = generate_tasks(num_val_tasks, low=NU_LOW, high=NU_HIGH)
+        val_sup, val_qry = generate_tasks(num_val_tasks)
         val_data = generate_task_data(
-            val_tasks,
-            self.x_d_size,
-            self.t_d_size,
-            self.b_size,
-            self.i_size,
-            mode="data",
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
+            sup=val_sup, qry=val_qry, mode="data", size_sup=100, size_qry=100
         )
 
         inner_loss_val, nrmse_val = self._outer_loop(val_data, train=False)
@@ -315,19 +283,11 @@ class MAML:
                 "ep": 0,
             },
         )
-        train_tasks = generate_tasks(num_train_tasks, low=NU_LOW, high=NU_HIGH)
+        train_sup, train_qry = generate_tasks(num_train_tasks)
         train_data = generate_task_data(
-            train_tasks,
-            self.x_d_size,
-            self.t_d_size,
-            self.b_size,
-            self.i_size,
-            mode="data",
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
+            sup=train_sup, qry=train_qry, mode="data", size_sup=self.x_size, size_qry=self.x_size
         )
+
         for i in trange(1, train_steps + 1):
             self._train_step += 1
 
@@ -335,10 +295,6 @@ class MAML:
 
             train_loss["inner_loss_pre_adapt"].append(inner_loss[0])
             train_loss["inner_loss_post_adapt"].append(inner_loss[-1])
-
-            if i % SAVE_INTERVAL == 0:
-                print(f"Step {i} Model saved")
-                self.save(i, inner_loss)
 
             if i % VAL_INTERVAL == 0:
                 inner_loss_val, nrmse_val = self._outer_loop(val_data, train=False)
@@ -360,6 +316,7 @@ class MAML:
                 }
             )
 
+        self.save(train_steps, inner_loss)
         return train_loss, val_loss, nrmse, self.model
 
 
@@ -369,11 +326,7 @@ class MAML_hybrid:
         num_inner_steps,
         inner_lr,
         outer_lr,
-        log_dir,
-        x_d_size,
-        t_d_size,
-        b_size,
-        i_size,
+        x_size,
         f_size,
         sampled_tasks_size,
         sampled_data_size,
@@ -391,9 +344,9 @@ class MAML_hybrid:
         """
 
         print("Initializing MAML surrogate model")
-        # self.model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
+        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=3)
         # self.model = nn.DataParallel(self.model)
-        self.model = hybrid_model(neuron_size=5, layer_size=6, dim=2, log_dir=log_dir)
+        # self.model = hybrid_model(neuron_size=5, layer_size=3, dim=2, log_dir=log_dir)
         print("Current device: ", DEVICE)
         print(self.model)
         self.model.to(DEVICE)
@@ -405,20 +358,14 @@ class MAML_hybrid:
         self._outer_lr = outer_lr
         self._optimizer = torch.optim.Adam(self.model.parameters(), lr=self._outer_lr)
 
-        self.x_d_size = x_d_size
-        self.t_d_size = t_d_size
-        self.b_size = b_size
-        self.i_size = i_size
+        self.x_size = x_size
         self.f_size = f_size
-
         self.sampled_tasks_size = sampled_tasks_size
         self.sampled_data_size = sampled_data_size
 
         self.mode = mode
 
         self._train_step = 0
-
-        self.log_dir = log_dir
 
         print("Finished initialization of MAML-PINN model")
         print(f"Current mode: {mode}")
@@ -456,97 +403,42 @@ class MAML_hybrid:
         loss_fn = nn.MSELoss()
         opt_fn = torch.optim.Adam(model_phi.parameters(), lr=self._inner_lr)
 
-        x_train, t_train, y_train = support
+        x_train, y_train = support
 
         if train:
-            x_b_train, t_b_train, y_b_train = generate_data(
-                mode="boundary",
-                num_x=self.x_d_size,
-                num_t=self.t_d_size,
-                num_b=self.b_size,
-                num_i=self.i_size,
-                lb_x=LB_X,
-                rb_x=RB_X,
-                lb_t=LB_T,
-                rb_t=RB_T,
-                random=RANDOM,
-                alpha=support_key,
-            )
-
-            x_i_train, t_i_train, y_i_train = generate_data(
-                mode="initial",
-                num_x=self.x_d_size,
-                num_t=self.t_d_size,
-                num_b=self.b_size,
-                num_i=self.i_size,
-                lb_x=LB_X,
-                rb_x=RB_X,
-                lb_t=LB_T,
-                rb_t=RB_T,
-                random=RANDOM,
-                alpha=support_key,
-            )
-
-            x_f_train, t_f_train, y_f_train = generate_data(
-                mode="physics",
-                num_x=self.f_size,
-                num_t=self.f_size,
-                num_b=self.b_size,
-                num_i=self.i_size,
-                lb_x=LB_X,
-                rb_x=RB_X,
-                lb_t=LB_T,
-                rb_t=RB_T,
-                random=RANDOM,
-                alpha=support_key,
-            )
+            x_f_train = []
+            y_f_train = []
+            for key in support_key:
+                x_f_tmp, y_f_tmp = generate_data(
+                    mode="physics",
+                    n=self.f_size,
+                    task=key,
+                )
+                x_f_train.append(x_f_tmp)
+                y_f_train.append(y_f_tmp)
+            x_f_train = np.array(x_f_train)
+            y_f_train = np.array(y_f_train)
 
         x_train = to_tensor(x_train)
-        t_train = to_tensor(t_train)
-        y_train = to_tensor(y_train)
+        y_train = to_tensor(y_train).reshape(-1, 1)
 
         x_train = x_train.to(DEVICE)
-        t_train = t_train.to(DEVICE)
         y_train = y_train.to(DEVICE)
 
-        in_train = torch.hstack([x_train, t_train])
-
         if train:
-            x_b_train = to_tensor(x_b_train)
-            t_b_train = to_tensor(t_b_train)
-            y_b_train = to_tensor(y_b_train)
 
-            x_i_train = to_tensor(x_i_train)
-            t_i_train = to_tensor(t_i_train)
-            y_i_train = to_tensor(y_i_train)
-
-            x_f_train = to_tensor(x_f_train)
-            t_f_train = to_tensor(t_f_train)
-            y_f_train = to_tensor(y_f_train)
-
-            x_b_train = x_b_train.to(DEVICE)
-            t_b_train = t_b_train.to(DEVICE)
-            y_b_train = y_b_train.to(DEVICE)
-
-            x_i_train = x_i_train.to(DEVICE)
-            t_i_train = t_i_train.to(DEVICE)
-            y_i_train = y_i_train.to(DEVICE)
+            x_f_train = to_tensor(x_f_train).reshape(-1, 3)
+            y_f_train = to_tensor(y_f_train).reshape(-1, 1)
 
             x_f_train = x_f_train.to(DEVICE)
-            t_f_train = t_f_train.to(DEVICE)
             y_f_train = y_f_train.to(DEVICE)
-
-            in_b_train = torch.hstack([x_b_train, t_b_train])
-            in_i_train = torch.hstack([x_i_train, t_i_train])
-            in_f_train = torch.hstack([x_f_train, t_f_train])
-
 
         num_inner_steps = self._num_inner_steps
 
         for _ in range(1, num_inner_steps + 1):
             nrmse = (
-                compute_nrmse(
-                    model_phi(in_train).cpu().detach().numpy(), y_train.cpu().detach().numpy()
+                compute_mse(
+                    model_phi(x_train).cpu().detach().numpy(), y_train.cpu().detach().numpy()
                 )
                 if not train
                 else None
@@ -556,28 +448,26 @@ class MAML_hybrid:
 
             opt_fn.zero_grad()
             loss_d = (
-                loss_fn(y_train, model_phi(in_train))
+                loss_fn(y_train, model_phi(x_train))
                 if (self.mode == "hybrid") or (self.mode == "physics" and not train)
                 else 0
             )
-            loss_b = loss_fn(y_b_train, model_phi(in_b_train)) if train else 0
-            loss_i = loss_fn(y_i_train, model_phi(in_i_train)) if train else 0
-            loss_f = model_phi.calc_loss_f(in_f_train, y_f_train) if train else 0
+            # loss_b = loss_fn(y_b_train, model_phi(in_b_train)) if train else 0
+            # loss_i = loss_fn(y_i_train, model_phi(in_i_train)) if train else 0
+            loss_f = model_phi.calc_loss_f(x_f_train, y_f_train) if train else 0
 
-            loss = loss_d + loss_b + loss_i + loss_f
+            loss = loss_d + loss_f
             loss.to(DEVICE)
             loss.backward()
             opt_fn.step()
             inner_loss += [loss.item()]
 
-        loss = loss_fn(y_train, model_phi(in_train))
+        loss = loss_fn(y_train, model_phi(x_train))
         inner_loss += [loss.item()]
         grad = torch.autograd.grad(loss, model_phi.parameters()) if train else None
         phi = model_phi.state_dict()
         nrmse = (
-            compute_nrmse(
-                model_phi(in_train).cpu().detach().numpy(), y_train.cpu().detach().numpy()
-            )
+            compute_mse(model_phi(x_train).cpu().detach().numpy(), y_train.cpu().detach().numpy())
             if not train
             else None
         )
@@ -625,120 +515,65 @@ class MAML_hybrid:
         sup_key, sup_data = sup
         qry_key, qry_data = qry
 
-        sampled_sup = random.sample(sup_data, self.sampled_tasks_size)
-        sampled_qry = random.sample(qry_data, self.sampled_tasks_size)
+        sampled_sup_idx = random.sample(range(len(sup_data)), self.sampled_tasks_size)
+        sampled_qry_idx = random.sample(range(len(qry_data)), self.sampled_tasks_size)
 
+        sampled_sup = [sup_data[i] for i in sampled_sup_idx]
+        sampled_qry = [qry_data[i] for i in sampled_qry_idx]
+        sampled_sup_key = [sup_key[i] for i in sampled_sup_idx]
+        sampled_qry_key = [qry_key[i] for i in sampled_qry_idx]
         for idx in tqdm(range(len(sampled_sup))):
             sup = sampled_sup[idx]
             qry = sampled_qry[idx]
 
             data_idx = random.sample(range(len(sup[0])), self.sampled_data_size)
             x_sup = sup[0][data_idx]
-            t_sup = sup[1][data_idx]
-            y_sup = sup[2][data_idx]
+            y_sup = sup[1][data_idx]
 
-            sup = (x_sup, t_sup, y_sup)
+            sup = (x_sup, y_sup)
 
-            phi, grad, loss_sup, nrmse = self._inner_loop(theta, sup, sup_key, train)
+            phi, grad, loss_sup, nrmse = self._inner_loop(theta, sup, sampled_sup_key, train)
             inner_loss.append(loss_sup)
 
             model_outer.load_state_dict(phi)
 
             data_idx = random.sample(range(len(qry[0])), self.sampled_data_size)
             x_train = qry[0][data_idx]
-            t_train = qry[1][data_idx]
-            y_train = qry[2][data_idx]
+            y_train = qry[1][data_idx]
 
             if train:
 
-                x_b_train, t_b_train, y_b_train = generate_data(
-                    mode="boundary",
-                    num_x=self.x_d_size,
-                    num_t=self.t_d_size,
-                    num_b=self.b_size,
-                    num_i=self.i_size,
-                    lb_x=LB_X,
-                    rb_x=RB_X,
-                    lb_t=LB_T,
-                    rb_t=RB_T,
-                    random=RANDOM,
-                    alpha=qry_key,
-                )
-
-                x_i_train, t_i_train, y_i_train = generate_data(
-                    mode="initial",
-                    num_x=self.x_d_size,
-                    num_t=self.t_d_size,
-                    num_b=self.b_size,
-                    num_i=self.i_size,
-                    lb_x=LB_X,
-                    rb_x=RB_X,
-                    lb_t=LB_T,
-                    rb_t=RB_T,
-                    random=RANDOM,
-                    alpha=qry_key,
-                )
-
-                x_f_train, t_f_train, y_f_train = generate_data(
-                    mode="physics",
-                    num_x=self.x_d_size,
-                    num_t=self.t_d_size,
-                    num_b=self.b_size,
-                    num_i=self.i_size,
-                    lb_x=LB_X,
-                    rb_x=RB_X,
-                    lb_t=LB_T,
-                    rb_t=RB_T,
-                    random=RANDOM,
-                    alpha=qry_key,
-                )
+                x_f_train = []
+                y_f_train = []
+                for key in sampled_qry_key:
+                    x_f_tmp, y_f_tmp = generate_data(
+                        mode="physics",
+                        n=self.f_size,
+                        task=key,
+                    )
+                    x_f_train.append(x_f_tmp)
+                    y_f_train.append(y_f_tmp)
+                x_f_train = np.array(x_f_train)
+                y_f_train = np.array(y_f_train)
 
             x_train = to_tensor(x_train)
-            t_train = to_tensor(t_train)
-            y_train = to_tensor(y_train)
+            y_train = to_tensor(y_train).reshape(-1, 1)
 
             x_train = x_train.to(DEVICE)
-            t_train = t_train.to(DEVICE)
             y_train = y_train.to(DEVICE)
-
-            in_train = torch.hstack([x_train, t_train])
 
             if train:
 
-                x_b_train = to_tensor(x_b_train)
-                t_b_train = to_tensor(t_b_train)
-                y_b_train = to_tensor(y_b_train)
-
-                x_i_train = to_tensor(x_i_train)
-                t_i_train = to_tensor(t_i_train)
-                y_i_train = to_tensor(y_i_train)
-
-                x_f_train = to_tensor(x_f_train)
-                t_f_train = to_tensor(t_f_train)
-                y_f_train = to_tensor(y_f_train)
-
-                x_b_train = x_b_train.to(DEVICE)
-                t_b_train = t_b_train.to(DEVICE)
-                y_b_train = y_b_train.to(DEVICE)
-
-                x_i_train = x_i_train.to(DEVICE)
-                t_i_train = t_i_train.to(DEVICE)
-                y_i_train = y_i_train.to(DEVICE)
+                x_f_train = to_tensor(x_f_train).reshape(-1, 3)
+                y_f_train = to_tensor(y_f_train).reshape(-1, 1)
 
                 x_f_train = x_f_train.to(DEVICE)
-                t_f_train = t_f_train.to(DEVICE)
                 y_f_train = y_f_train.to(DEVICE)
 
-                in_b_train = torch.hstack([x_b_train, t_b_train])
-                in_i_train = torch.hstack([x_i_train, t_i_train])
-                in_f_train = torch.hstack([x_f_train, t_f_train])
+            loss_d = loss_fn(y_train, model_outer(x_train)) if self.mode == "hybrid" else 0
+            loss_f = model_outer.calc_loss_f(x_f_train, y_f_train) if train else 0
 
-            loss_d = loss_fn(y_train, model_outer(in_train)) if self.mode == "hybrid" else 0
-            loss_b = loss_fn(y_b_train, model_outer(in_b_train)) if train else 0
-            loss_i = loss_fn(y_i_train, model_outer(in_i_train)) if train else 0
-            loss_f = model_outer.calc_loss_f(in_f_train, y_f_train) if train else 0
-
-            loss = loss_d + loss_b + loss_i + loss_f
+            loss = loss_d + loss_f
 
             grad = torch.autograd.grad(loss, model_outer.parameters()) if train else None
 
@@ -782,24 +617,13 @@ class MAML_hybrid:
         """
         print("Start MAML training at iteration {}".format(self._train_step))
 
-        train_loss = {"inner_loss_pre_adapt": [], "inner_loss_post_adapt": []}
-
-        val_loss = {"inner_loss_pre_adapt": [], "inner_loss_post_adapt": []}
-
-        nrmse = {"nrmse_val_post_adapt": [], "nrmse_val_pre_adapt": []}
-
-        val_tasks = generate_tasks(num_val_tasks, low=NU_LOW, high=NU_HIGH)
+        val_sup, val_qry = generate_tasks(num_val_tasks)
         val_data = generate_task_data(
-            val_tasks,
-            self.x_d_size,
-            self.t_d_size,
-            self.b_size,
-            self.i_size,
+            sup=val_sup,
+            qry=val_qry,
             mode="data",
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
+            size_sup=100,
+            size_qry=100,
         )
         inner_loss_val, nrmse_val = self._outer_loop(val_data, train=False)
         wandb.log(
@@ -811,31 +635,18 @@ class MAML_hybrid:
                 "ep": 0,
             },
         )
-        train_tasks = generate_tasks(num_train_tasks, low=NU_LOW, high=NU_HIGH)
+        train_sup, train_qry = generate_tasks(num_train_tasks)
         train_data = generate_task_data(
-            train_tasks,
-            self.x_d_size,
-            self.t_d_size,
-            self.b_size,
-            self.i_size,
-            mode="data",
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
+            sup=train_sup,
+            qry=train_qry,
+            mode="physics",
+            size_sup=self.x_size,
+            size_qry=self.x_size,
         )
         for i in trange(1, train_steps + 1):
             self._train_step += 1
 
             inner_loss, _ = self._outer_loop(train_data, train=True)
-
-            train_loss["inner_loss_pre_adapt"].append(inner_loss[0])
-            train_loss["inner_loss_post_adapt"].append(inner_loss[-1])
-
-            if i % SAVE_INTERVAL == 0:
-                # print(f"Step {i} Model saved")
-                # self.save(i, inner_loss)
-                pass
 
             if i % VAL_INTERVAL == 0:
                 inner_loss_val, nrmse_val = self._outer_loop(val_data, train=False)
@@ -859,4 +670,4 @@ class MAML_hybrid:
 
         self.save(i, inner_loss)
 
-        return train_loss, val_loss, nrmse, self.model
+        return 0, 0, 0, self.model

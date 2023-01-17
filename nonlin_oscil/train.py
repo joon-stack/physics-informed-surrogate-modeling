@@ -16,7 +16,7 @@ from data import generate_data, to_tensor, generate_tasks
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-TASK = (21, 0.1)
+TASK = (1.0, 0.2, 1.0, 1.0, 1.4, 0.5)
 
 VAL_INTERVAL = 1
 LOG_INTERVAL = 10
@@ -45,7 +45,7 @@ def train(
 
     print(f"Current Mode: {mode}")
     # model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
-    model = hybrid_model(neuron_size=64, layer_size=6, dim=3)
+    model = hybrid_model(neuron_size=64, layer_size=6, dim=6)
 
     # if mode == "data":
     #     model = nn.DataParallel(model)
@@ -219,9 +219,9 @@ def train(
                 loss_val = loss_func(y_val, model(x_val))
                 losses_val += [loss_val.item()]
                 mse = compute_mse(model(x_val).cpu().detach().numpy(), y_val.cpu().detach().numpy())
-                wandb.log({"loss_val": loss_val.item(), "mse": mse}, commit=False)
+                # wandb.log({"loss_val": loss_val.item(), "mse": mse}, commit=False)
 
-            wandb.log({"ep": epoch, "loss_train": loss_train.item()})
+            # wandb.log({"ep": epoch, "loss_train": loss_train.item()})
 
             if epoch % SAVE_INTERVAL == 0:
                 pass
@@ -327,6 +327,28 @@ def train(
                 }
             )
 
-    fname = os.path.join(wandb.run.dir, "model.h5")
-    save(epoch, model, optim, loss_train.item(), fname)
+    # fname = os.path.join(wandb.run.dir, "model.h5")
+    # save(epoch, model, optim, loss_train.item(), fname)
+
+    prob_hat, prob = calc_prob(model, 1000000)
+    print(f"Actual Pf: {prob:.5f}")
+    print(f"Modeled Pf: {prob_hat:.5f}")
     return nrmse
+
+
+def calc_prob(model, n):
+    x, y = generate_data(mode="data", n=n, task=np.array(TASK))
+    x = to_tensor(x).to(DEVICE)
+    model = model.to(DEVICE)
+    y_hat = model(x)
+    zero = torch.zeros(y_hat.shape)
+    zero[y_hat < 0] = 1
+    y_hat_count = torch.count_nonzero(zero)
+    prob_hat = y_hat_count / n
+
+    zero = torch.zeros(y.shape)
+    zero[y < 0] = 1
+    y_count = torch.count_nonzero(zero)
+    prob = y_count / n
+
+    return prob_hat, prob

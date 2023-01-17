@@ -7,13 +7,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--project",
         type=str,
-        default="maml_burgers",
+        default="maml_ishigami",
         help="project name",
     )
     parser.add_argument(
         "--num_inner_steps",
         type=int,
-        default=10,
+        default=1,
         help="number of inner steps",
     )
     parser.add_argument(
@@ -25,45 +25,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_train_tasks",
         type=int,
-        default=20,
+        default=500,
         help="number of train tasks",
     )
     parser.add_argument(
         "--num_val_tasks",
         type=int,
-        default=5,
+        default=100,
         help="number of val tasks",
     )
     parser.add_argument(
-        "--x_d_size",
+        "--x_size",
         type=int,
-        default=5,
-        help="number of labeled x data (grid form)",
+        default=200,
+        help="number of labeled data",
     )
-    parser.add_argument(
-        "--t_d_size",
-        type=int,
-        default=5,
-        help="number of labeled t data (grid form)",
-    )
-    parser.add_argument(
-        "--f_size",
-        type=int,
-        default=100,
-        help="number of physics data (physics)"
-    )
-    parser.add_argument(
-        "--b_size",
-        type=int,
-        default=100,
-        help="number of boundary data (physics)",
-    )
-    parser.add_argument(
-        "--i_size",
-        type=int,
-        default=100,
-        help="number of initial data (physics)",
-    )
+    parser.add_argument("--f_size", type=int, default=1000, help="number of physics data (physics)")
     parser.add_argument(
         "--inner_lr",
         type=float,
@@ -75,12 +52,6 @@ if __name__ == "__main__":
         type=float,
         default=0.001,
         help="learning rate of outer steps",
-    )
-    parser.add_argument(
-        "--log_dir",
-        type=str,
-        default="./logs/maml",
-        help="log directory",
     )
     parser.add_argument(
         "--mode", type=str, default="hybrid", help="training mode (data, physics, hybrid)"
@@ -106,11 +77,7 @@ if __name__ == "__main__":
             cfg.num_inner_steps,
             cfg.inner_lr,
             cfg.outer_lr,
-            cfg.log_dir,
-            cfg.x_d_size,
-            cfg.t_d_size,
-            cfg.b_size,
-            cfg.i_size,
+            cfg.x_size,
             cfg.num_sample_tasks,
             cfg.num_sample_data,
         )
@@ -119,11 +86,7 @@ if __name__ == "__main__":
             cfg.num_inner_steps,
             cfg.inner_lr,
             cfg.outer_lr,
-            cfg.log_dir,
-            cfg.x_d_size,
-            cfg.t_d_size,
-            cfg.b_size,
-            cfg.i_size,
+            cfg.x_size,
             cfg.f_size,
             cfg.num_sample_tasks,
             cfg.num_sample_data,

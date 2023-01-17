@@ -3,36 +3,65 @@ import torch
 from scipy.stats import qmc
 
 
-def generate_y(x1: np.ndarray, x2: np.ndarray, x3: np.ndarray, a1: float, a2: float) -> np.ndarray:
-    y = np.sin(x1) + a1 * (np.sin(x2) ** 2) + a2 * x3**4 * np.sin(x1)
-    y = y.reshape(x1.shape)
+def generate_y(
+    yk1: np.ndarray,
+    yk2: np.ndarray,
+    yf1: np.ndarray,
+    yt1: np.ndarray,
+    ym: np.ndarray,
+    yr: np.ndarray,
+    uk1: float,
+    uk2: float,
+    uf1: float,
+    ut1: float,
+    um: float,
+    ur: float,
+) -> np.ndarray:
+    xk1 = yk1 * uk1
+    xk2 = yk2 * uk2
+    xf1 = yf1 * uf1
+    xt1 = yt1 * ut1
+    xm = ym * um
+    xr = yr * ur
+
+    y = 3 * xr - np.abs(
+        (2 * xf1 / xm / (xk1 + xk2)) * np.sin(xt1 * 0.5 * np.sqrt((xk1 + xk2) / xm))
+    )
+    # y = y.reshape(x1.shape)
     return y
 
 
 def generate_tasks(n: int):
-    sampler = qmc.LatinHypercube(d=2)
+    sampler = qmc.LatinHypercube(d=6)
     sample_sup = sampler.random(n)
     sample_qry = sampler.random(n)
-    l_bounds = [3.5, 0.05]
-    u_bounds = [35, 0.5]
+    l_bounds = [0.8, 0.08, 0.8, 0.8, 0.8, 0.4]
+    u_bounds = [1.2, 0.12, 1.2, 1.2, 1.2, 0.6]
     sup = qmc.scale(sample_sup, l_bounds, u_bounds)
     qry = qmc.scale(sample_qry, l_bounds, u_bounds)
     return sup, qry
 
 
 def generate_data(mode: str, n: int, task: np.ndarray):
-    sampler = qmc.LatinHypercube(d=3)
-    sample = sampler.random(n)
-    l_bounds = [-np.pi, -np.pi, -np.pi]
-    u_bounds = [np.pi, np.pi, np.pi]
-    x = qmc.scale(sample, l_bounds, u_bounds)
-    x1 = x[:, 0]
-    x2 = x[:, 1]
-    x3 = x[:, 2]
-    a1, a2 = task
+    sk1 = 0.1
+    sk2 = 0.1
+    sf1 = 0.2
+    st1 = 0.2
+    sm = 0.05
+    sr = 0.1
+
+    x = np.random.normal([1, 1, 1, 1, 1, 1], [sk1, sk2, sf1, st1, sm, sr], (n, 6))
     if mode == "data":
-        
-        y = generate_y(x1, x2, x3, a1, a2)
+        yk1 = x[:, 0]
+        yk2 = x[:, 1]
+        yf1 = x[:, 2]
+        yt1 = x[:, 3]
+        ym = x[:, 4]
+        yr = x[:, 5]
+
+        uk1, uk2, uf1, ut1, um, ur = task
+
+        y = generate_y(yk1, yk2, yf1, yt1, ym, yr, uk1, uk2, uf1, ut1, um, ur)
 
         return x, y
 
@@ -71,5 +100,4 @@ def generate_task_data(sup: np.ndarray, qry: np.ndarray, mode: str, size_sup: in
 
 
 if __name__ == "__main__":
-    data = generate_data(mode="data", n=1, task=np.array([7, 0.1]))
-    print(data)
+    generate_data(mode="data", n=10, task=(1, 1))

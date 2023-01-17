@@ -67,13 +67,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_supervised_x_data",
         type=int,
-        default=3,
+        default=1,
         help="number of labeled x data (supervised learning)",
     )
     parser.add_argument(
         "--num_supervised_t_data",
         type=int,
-        default=3,
+        default=1,
         help="number of labeled t data (supervised learning)",
     )
     parser.add_argument(
@@ -119,7 +119,7 @@ if __name__ == "__main__":
         "--num_iter", type=int, default=1, help="how many times to iterate training"
     )
     parser.add_argument("--fpath", type=str, default=None, help="pre-trained model path")
-    parser.add_argument("--project", type=str, default="burgers", help="wandb project name")
+    parser.add_argument("--project", type=str, default="burgers_small", help="wandb project name")
     parser.add_argument("--run_name", type=str, default=None, help="wandb run name")
     cfg = parser.parse_args()
     wandb.init(project=cfg.project, config=cfg)

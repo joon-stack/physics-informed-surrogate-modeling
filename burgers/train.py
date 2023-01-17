@@ -70,8 +70,8 @@ def train(
     # model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
     model = hybrid_model(neuron_size=5, layer_size=6, dim=2, log_dir=log_dir)
 
-    if mode == "data":
-        model = nn.DataParallel(model)
+    # if mode == "data":
+    #     model = nn.DataParallel(model)
     # print(torch.load(fpath)["model_state_dict"])
     # model = hybrid_model(neuron_size=5, layer_size=6, dim=2, log_dir=log_dir)
     # modelpath = "logs/maml/state1000.model"
@@ -272,8 +272,8 @@ def train(
 
         x_f_train, t_f_train, y_f_train = generate_data(
             mode="physics",
-            num_x=x_size,
-            num_t=t_size,
+            num_x=100,
+            num_t=100,
             num_b=b_size,
             num_i=i_size,
             lb_x=LB_X,

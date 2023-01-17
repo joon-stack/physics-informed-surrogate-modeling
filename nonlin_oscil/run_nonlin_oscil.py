@@ -39,13 +39,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--d_size",
         type=int,
-        default=10,
+        default=100,
         help="number of labeled data (supervised learning)",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=100,
+        default=1000,
         help="number of epochs",
     )
     parser.add_argument(
@@ -56,10 +56,10 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--fpath", type=str, default=None, help="pre-trained model path")
-    parser.add_argument("--project", type=str, default="ishigami", help="wandb project name")
+    parser.add_argument("--project", type=str, default="temp", help="wandb project name")
     parser.add_argument("--run_name", type=str, default=None, help="wandb run name")
     cfg = parser.parse_args()
-    wandb.init(project=cfg.project, config=cfg)
+    # wandb.init(project=cfg.project, config=cfg)
     if cfg.run_name != None:
         wandb.run.name = cfg.run_name
     main(cfg)
