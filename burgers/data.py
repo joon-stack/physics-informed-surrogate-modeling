@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from burgers import *
+from burgers_util import *
 
 LB_X = -1.0
 RB_X = 1.0
@@ -59,7 +59,7 @@ def generate_data(
     lb_t: float,
     rb_t: float,
     random: bool,
-    alpha: float = NU,
+    alpha: float,
 ) -> tuple[np.array, np.array, np.array]:
     interval_x = (rb_x - lb_x) / num_x
     interval_t = (rb_t - lb_t) / num_t

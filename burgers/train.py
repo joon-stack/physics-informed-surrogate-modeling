@@ -10,15 +10,9 @@ from tqdm import trange, tqdm
 from models import hybrid_model
 from maml import MAML, MAML_hybrid
 
-from metrics import compute_nrmse
+from metrics import compute_nrmse, compute_mse
 from data import generate_data, to_tensor
-from plot import (
-    plot_progress,
-    plot_progress_maml,
-    plot_nrmse_maml,
-    plot_validation_maml,
-    plot_comparison,
-)
+
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -63,6 +57,7 @@ def train(
     x_size: int,
     t_size: int,
     fpath: str,
+    task: float,
     mode: str = "physics",
 ) -> dict:
 
@@ -95,6 +90,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_train = to_tensor(x_train)
         t_train = to_tensor(t_train)
@@ -111,6 +107,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_val = to_tensor(x_val)
         t_val = to_tensor(t_val)
@@ -138,6 +135,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_b_train = to_tensor(x_b_train)
         t_b_train = to_tensor(t_b_train)
@@ -158,6 +156,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_i_train = to_tensor(x_i_train)
         t_i_train = to_tensor(t_i_train)
@@ -178,6 +177,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_f_train = to_tensor(x_f_train)
         t_f_train = to_tensor(t_f_train)
@@ -198,6 +198,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=False,
+            alpha=task,
         )
         x_val = to_tensor(x_val)
         t_val = to_tensor(t_val)
@@ -233,6 +234,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_train = to_tensor(x_train)
         t_train = to_tensor(t_train)
@@ -249,6 +251,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_b_train = to_tensor(x_b_train)
         t_b_train = to_tensor(t_b_train)
@@ -265,6 +268,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_i_train = to_tensor(x_i_train)
         t_i_train = to_tensor(t_i_train)
@@ -281,6 +285,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_f_train = to_tensor(x_f_train)
         t_f_train = to_tensor(t_f_train)
@@ -297,6 +302,7 @@ def train(
             lb_t=LB_T,
             rb_t=RB_T,
             random=RANDOM,
+            alpha=task,
         )
         x_val = to_tensor(x_val)
         t_val = to_tensor(t_val)
@@ -331,7 +337,7 @@ def train(
     losses_train = []
     losses_val = []
 
-    nrmse = {"id": 0.0, "ood": 0.0}
+    mse = {"id": 0.0, "ood": 0.0}
 
     if mode == "data":
         fname = f"./logs/{mode}"
@@ -356,10 +362,10 @@ def train(
                 model.eval()
                 loss_val = loss_func(y_val, model(in_val))
                 losses_val += [loss_val.item()]
-                nrmse = compute_nrmse(
+                mse = compute_mse(
                     model(in_val).cpu().detach().numpy(), y_val.cpu().detach().numpy()
                 )
-                wandb.log({"loss_val": loss_train.item(), "nrmse": nrmse}, commit=False)
+                wandb.log({"loss_val": loss_train.item(), "mse": mse}, commit=False)
 
             wandb.log({"ep": epoch, "loss_train": loss_train.item()})
 
@@ -404,10 +410,10 @@ def train(
                 loss_val = loss_func(y_val, model(in_val))
                 # print(f"Validation loss {loss_val.item(): .3f}")
                 losses_val += [loss_val.item()]
-                nrmse = compute_nrmse(
+                mse = compute_mse(
                     model(in_val).cpu().detach().numpy(), y_val.cpu().detach().numpy()
                 )
-                wandb.log({"loss_val": loss_train.item(), "nrmse": nrmse}, commit=False)
+                wandb.log({"loss_val": loss_train.item(), "mse": mse}, commit=False)
 
             if epoch % SAVE_INTERVAL == 0:
                 pass
@@ -437,25 +443,26 @@ def train(
             optim.zero_grad()
 
             loss_d_train = loss_func(y_train, model(in_train))
-            loss_b_train = loss_func(y_b_train, model(in_b_train))
-            loss_i_train = loss_func(y_i_train, model(in_i_train))
+            # loss_b_train = loss_func(y_b_train, model(in_b_train))
+            # loss_i_train = loss_func(y_i_train, model(in_i_train))
 
             loss_f_train = model.calc_loss_f(in_f_train, y_f_train)
 
             loss_d_train.to(DEVICE)
-            loss_b_train.to(DEVICE)
-            loss_i_train.to(DEVICE)
+            # loss_b_train.to(DEVICE)
+            # loss_i_train.to(DEVICE)
             loss_f_train.to(DEVICE)
 
-            loss_train = loss_d_train + loss_b_train + loss_f_train + loss_i_train
+            # loss_train = loss_d_train + loss_b_train + loss_f_train + loss_i_train
+            loss_train = loss_d_train + loss_f_train
 
             loss_train.backward()
 
             optim.step()
 
             losses_d_train += [loss_d_train.item()]
-            losses_b_train += [loss_b_train.item()]
-            losses_i_train += [loss_i_train.item()]
+            # losses_b_train += [loss_b_train.item()]
+            # losses_i_train += [loss_i_train.item()]
             losses_f_train += [loss_f_train.item()]
             losses_train += [loss_train.item()]
 
@@ -465,10 +472,10 @@ def train(
                 loss_val = loss_func(y_val, model(in_val))
                 losses_val += [loss_val.item()]
 
-                nrmse = compute_nrmse(
+                mse = compute_mse(
                     model(in_val).cpu().detach().numpy(), y_val.cpu().detach().numpy()
                 )
-                wandb.log({"loss_val": loss_train.item(), "nrmse": nrmse}, commit=False)
+                wandb.log({"loss_val": loss_train.item(), "mse": mse}, commit=False)
 
             if epoch % SAVE_INTERVAL == 0:
                 fname = f"./logs/{mode}/step{epoch}.model"
@@ -478,8 +485,8 @@ def train(
                 {
                     "ep": epoch,
                     "loss_d_train": loss_d_train.item(),
-                    "loss_b_train": loss_b_train.item(),
-                    "loss_i_train": loss_i_train.item(),
+                    # "loss_b_train": loss_b_train.item(),
+                    # "loss_i_train": loss_i_train.item(),
                     "loss_f_train": loss_f_train.item(),
                     "loss_train": loss_train.item(),
                 }
@@ -503,5 +510,5 @@ def train(
 
     losses_val_dict = {"total": losses_val}
     fname = os.path.join(wandb.run.dir, "model.h5")
-    save(epoch, model, optim, loss_train.item(), fname)
-    return nrmse
+    # save(epoch, model, optim, loss_train.item(), fname)
+    return mse

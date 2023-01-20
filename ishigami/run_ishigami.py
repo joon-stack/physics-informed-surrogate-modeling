@@ -30,6 +30,7 @@ def main(args: dict) -> None:
         size=args.d_size,
         fpath=args.fpath,
         mode=args.mode,
+        task=args.task,
     )
 
 
@@ -51,9 +52,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.001,
+        default=0.01,
         help="learning rate",
     )
+    parser.add_argument("--task", nargs="+", help="Task (in a list form)", required=True)
 
     parser.add_argument("--fpath", type=str, default=None, help="pre-trained model path")
     parser.add_argument("--project", type=str, default="ishigami", help="wandb project name")

@@ -13,7 +13,7 @@ from models import hybrid_model
 from data import *
 from metrics import *
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 VAL_INTERVAL = 10
 LOG_INTERVAL = 10

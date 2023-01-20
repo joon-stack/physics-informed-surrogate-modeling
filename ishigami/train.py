@@ -14,9 +14,8 @@ from models import hybrid_model
 from metrics import compute_nrmse, compute_mse
 from data import generate_data, to_tensor, generate_tasks
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
-TASK = (21, 0.1)
 
 VAL_INTERVAL = 1
 LOG_INTERVAL = 10
@@ -40,13 +39,15 @@ def train(
     lr: float,
     size: int,
     fpath: str,
-    mode: str = "physics",
+    mode: str,
+    task: list,
 ) -> dict:
 
     print(f"Current Mode: {mode}")
     # model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
     model = hybrid_model(neuron_size=64, layer_size=6, dim=3)
-
+    task = np.array(task, dtype=np.float32)
+    print("Current Task: ", task)
     # if mode == "data":
     #     model = nn.DataParallel(model)
     # print(torch.load(fpath)["model_state_dict"])
@@ -61,11 +62,11 @@ def train(
     print(model)
 
     if mode == "data":
-        x_train, y_train = generate_data(mode=mode, n=size, task=TASK)
+        x_train, y_train = generate_data(mode=mode, n=size, task=task)
         x_train = to_tensor(x_train)
         y_train = to_tensor(y_train).reshape(-1, 1)
 
-        x_val, y_val = generate_data(mode=mode, n=size, task=TASK)
+        x_val, y_val = generate_data(mode=mode, n=1000, task=task)
         x_val = to_tensor(x_val)
         y_val = to_tensor(y_val).reshape(-1, 1)
 
@@ -170,15 +171,15 @@ def train(
         in_val = torch.hstack([x_val, t_val])
 
     elif mode == "hybrid":
-        x_train, y_train = generate_data(mode="data", n=size, task=TASK)
+        x_train, y_train = generate_data(mode="data", n=size, task=task)
         x_train = to_tensor(x_train)
         y_train = to_tensor(y_train).reshape(-1, 1)
 
-        x_f_train, y_f_train = generate_data(mode="physics", n=10000, task=TASK)
+        x_f_train, y_f_train = generate_data(mode="physics", n=10000, task=task)
         x_f_train = to_tensor(x_f_train)
         y_f_train = to_tensor(y_f_train).reshape(-1, 1)
 
-        x_val, y_val = generate_data(mode="data", n=size, task=TASK)
+        x_val, y_val = generate_data(mode="data", n=1000, task=task)
         x_val = to_tensor(x_val)
         y_val = to_tensor(y_val).reshape(-1, 1)
 
@@ -327,6 +328,6 @@ def train(
                 }
             )
 
-    fname = os.path.join(wandb.run.dir, "model.h5")
-    save(epoch, model, optim, loss_train.item(), fname)
+    # fname = os.path.join(wandb.run.dir, "model.h5")
+    # save(epoch, model, optim, loss_train.item(), fname)
     return nrmse

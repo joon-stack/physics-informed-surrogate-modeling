@@ -9,7 +9,7 @@ import wandb
 import argparse
 import os
 
-from burgers import *
+from burgers_util import *
 
 from copy import deepcopy
 
@@ -58,6 +58,7 @@ def main(args: dict) -> None:
             mode=args.mode,
             log_dir=log_dir,
             fpath=args.fpath,
+            task=args.task / np.pi,
         )
 
 
@@ -67,13 +68,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_supervised_x_data",
         type=int,
-        default=1,
+        default=5,
         help="number of labeled x data (supervised learning)",
     )
     parser.add_argument(
         "--num_supervised_t_data",
         type=int,
-        default=1,
+        default=2,
         help="number of labeled t data (supervised learning)",
     )
     parser.add_argument(
@@ -121,6 +122,7 @@ if __name__ == "__main__":
     parser.add_argument("--fpath", type=str, default=None, help="pre-trained model path")
     parser.add_argument("--project", type=str, default="burgers_small", help="wandb project name")
     parser.add_argument("--run_name", type=str, default=None, help="wandb run name")
+    parser.add_argument("--task", type=float, default=0.01, help="task, (value)/np.pi = task")
     cfg = parser.parse_args()
     wandb.init(project=cfg.project, config=cfg)
     if cfg.run_name != None:

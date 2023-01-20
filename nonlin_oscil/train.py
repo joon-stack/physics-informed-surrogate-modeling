@@ -16,7 +16,7 @@ from data import generate_data, to_tensor, generate_tasks
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-TASK = (1.0, 0.2, 1.0, 1.0, 1.4, 0.5)
+TASK = (1.0, 0.1, 1.1, 1.1, 1.0, 0.7)
 
 VAL_INTERVAL = 1
 LOG_INTERVAL = 10
@@ -73,101 +73,6 @@ def train(
         y_train = y_train.to(DEVICE)
         x_val = x_val.to(DEVICE)
         y_val = y_val.to(DEVICE)
-
-    elif mode == "physics":
-        x_b_train, t_b_train, y_b_train = generate_data(
-            mode="boundary",
-            num_x=x_size,
-            num_t=t_size,
-            num_b=b_size,
-            num_i=i_size,
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
-            random=RANDOM,
-        )
-        x_b_train = to_tensor(x_b_train)
-        t_b_train = to_tensor(t_b_train)
-        y_b_train = to_tensor(y_b_train)
-
-        print(
-            f"x_b_train {x_b_train.shape}, t_b_train {t_b_train.shape}, y_b_train {y_b_train.shape}"
-        )
-
-        x_i_train, t_i_train, y_i_train = generate_data(
-            mode="initial",
-            num_x=x_size,
-            num_t=t_size,
-            num_b=b_size,
-            num_i=i_size,
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
-            random=RANDOM,
-        )
-        x_i_train = to_tensor(x_i_train)
-        t_i_train = to_tensor(t_i_train)
-        y_i_train = to_tensor(y_i_train)
-
-        print(
-            f"x_i_train {x_i_train.shape}, t_i_train {t_i_train.shape}, y_i_train {y_i_train.shape}"
-        )
-
-        x_f_train, t_f_train, y_f_train = generate_data(
-            mode=mode,
-            num_x=x_size,
-            num_t=t_size,
-            num_b=b_size,
-            num_i=i_size,
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
-            random=RANDOM,
-        )
-        x_f_train = to_tensor(x_f_train)
-        t_f_train = to_tensor(t_f_train)
-        y_f_train = to_tensor(y_f_train)
-
-        print(
-            f"x_f_train {x_f_train.shape}, t_f_train {t_f_train.shape}, y_f_train {y_f_train.shape}"
-        )
-
-        x_val, t_val, y_val = generate_data(
-            mode="data",
-            num_x=100,
-            num_t=100,
-            num_b=b_size,
-            num_i=i_size,
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
-            random=False,
-        )
-        x_val = to_tensor(x_val)
-        t_val = to_tensor(t_val)
-        y_val = to_tensor(y_val)
-
-        x_b_train = x_b_train.to(DEVICE)
-        t_b_train = t_b_train.to(DEVICE)
-        y_b_train = y_b_train.to(DEVICE)
-        x_i_train = x_i_train.to(DEVICE)
-        t_i_train = t_i_train.to(DEVICE)
-        y_i_train = y_i_train.to(DEVICE)
-        x_f_train = x_f_train.to(DEVICE)
-        t_f_train = t_f_train.to(DEVICE)
-        y_f_train = y_f_train.to(DEVICE)
-        x_val = x_val.to(DEVICE)
-        t_val = t_val.to(DEVICE)
-        y_val = y_val.to(DEVICE)
-
-        in_b_train = torch.hstack([x_b_train, t_b_train])
-        in_i_train = torch.hstack([x_i_train, t_i_train])
-        in_f_train = torch.hstack([x_f_train, t_f_train])
-        in_val = torch.hstack([x_val, t_val])
 
     elif mode == "hybrid":
         x_train, y_train = generate_data(mode="data", n=size, task=TASK)
@@ -330,25 +235,33 @@ def train(
     # fname = os.path.join(wandb.run.dir, "model.h5")
     # save(epoch, model, optim, loss_train.item(), fname)
 
-    prob_hat, prob = calc_prob(model, 1000000)
+    prob_hat, prob = calc_act_mod_prob(model, 1000000)
     print(f"Actual Pf: {prob:.5f}")
     print(f"Modeled Pf: {prob_hat:.5f}")
     return nrmse
 
 
-def calc_prob(model, n):
+def calc_act_mod_prob(model, n):
     x, y = generate_data(mode="data", n=n, task=np.array(TASK))
     x = to_tensor(x).to(DEVICE)
     model = model.to(DEVICE)
     y_hat = model(x)
-    zero = torch.zeros(y_hat.shape)
-    zero[y_hat < 0] = 1
-    y_hat_count = torch.count_nonzero(zero)
-    prob_hat = y_hat_count / n
 
-    zero = torch.zeros(y.shape)
-    zero[y < 0] = 1
-    y_count = torch.count_nonzero(zero)
-    prob = y_count / n
+    prob_hat = calc_prob(y_hat)
+    prob = calc_prob(y)
 
     return prob_hat, prob
+
+
+def calc_prob(y):
+    res = torch.zeros(y.shape)
+    res[y < 0] = 1
+    y_count = torch.count_nonzero(res)
+    prob = y_count / len(y)
+    return prob
+
+
+if __name__ == "__main__":
+    _, y = generate_data(mode="data", n=1000000, task=np.array(TASK))
+    prob = calc_prob(y)
+    print(f"Actual Pf: {prob:.5f}")
