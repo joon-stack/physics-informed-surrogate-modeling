@@ -7,7 +7,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--project",
         type=str,
-        default="maml_ishigami",
+        default="maml_oscil",
         help="project name",
     )
     parser.add_argument(
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_outer_steps",
         type=int,
-        default=1000,
+        default=10000,
         help="number of outer steps",
     )
     parser.add_argument(

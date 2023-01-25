@@ -23,10 +23,9 @@ def generate_y(
     xt1 = yt1 * ut1
     xm = ym * um
     xr = yr * ur
-
-    y = 3 * xr - np.abs(
-        (2 * xf1 / xm / (xk1 + xk2)) * np.sin(xt1 * 0.5 * np.sqrt((xk1 + xk2) / xm))
-    )
+    # print(xk1, xk2, xf1, xt1, xm, xr)
+    y = 3 * xr - np.abs((2 * xf1 / (xk1 + xk2)) * np.sin(xt1 * 0.5 * (xk1 + xk2) / xm))
+    # print(y)
     # y = y.reshape(x1.shape)
     return y
 
@@ -46,14 +45,18 @@ def generate_data(mode: str, n: int, task: np.ndarray):
 
     uk1, uk2, uf1, ut1, um, ur = task
 
-    sk1 = 0.1 * uk1
-    sk2 = 0.1 * uk2
-    sf1 = 0.2 * uf1
-    st1 = 0.2 * ut1
-    sm = 0.05 * um
-    sr = 0.1 * ur
-
-    print([sk1, sk2, sf1, st1, sm, sr])
+    # sk1 = 0.1 * uk1
+    # sk2 = 0.1 * uk2
+    # sf1 = 0.2 * uf1
+    # st1 = 0.2 * ut1
+    # sm = 0.05 * um
+    # sr = 0.1 * ur
+    sk1 = 0.1
+    sk2 = 0.01
+    sf1 = 0.2
+    st1 = 0.2
+    sm = 0.05
+    sr = 0.05
 
     x = np.random.normal([1, 1, 1, 1, 1, 1], [sk1, sk2, sf1, st1, sm, sr], (n, 6))
     if mode == "data":
@@ -103,4 +106,4 @@ def generate_task_data(sup: np.ndarray, qry: np.ndarray, mode: str, size_sup: in
 
 
 if __name__ == "__main__":
-    generate_data(mode="data", n=10, task=(1, 1))
+    print(generate_y(1, 1, 1, 1, 1, 1, 1.0, 0.1, 1.0, 1.0, 1.0, 0.5))

@@ -19,14 +19,6 @@ VAL_INTERVAL = 10
 LOG_INTERVAL = 10
 SAVE_INTERVAL = 100
 
-# NU_LOW = 0.001 / np.pi
-# NU_HIGH = 0.02 / np.pi
-
-NU_LOW = -3
-NU_HIGH = -1
-
-RANDOM = False
-
 
 class MAML:
     def __init__(
@@ -51,14 +43,12 @@ class MAML:
 
         print("Initializing MAML surrogate model")
 
-        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=3)
+        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=6)
         # self.model = nn.DataParallel(self.model)
         print("Current device: ", DEVICE)
         print(self.model)
         self.model.to(DEVICE)
         self.device = DEVICE
-
-        print(f"Random: {RANDOM}")
 
         self._num_inner_steps = num_inner_steps
 
@@ -284,6 +274,7 @@ class MAML:
             },
         )
         train_sup, train_qry = generate_tasks(num_train_tasks)
+
         train_data = generate_task_data(
             sup=train_sup, qry=train_qry, mode="data", size_sup=self.x_size, size_qry=self.x_size
         )
@@ -344,7 +335,7 @@ class MAML_hybrid:
         """
 
         print("Initializing MAML surrogate model")
-        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=3)
+        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=6)
         # self.model = nn.DataParallel(self.model)
         # self.model = hybrid_model(neuron_size=5, layer_size=3, dim=2, log_dir=log_dir)
         print("Current device: ", DEVICE)

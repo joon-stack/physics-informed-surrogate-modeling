@@ -16,9 +16,9 @@ from data import generate_data, to_tensor, generate_tasks
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-TASK = (1.0, 0.1, 1.1, 1.1, 1.0, 0.7)
+TASK = (1.0, 0.1, 1.0, 1.5, 2.0, 0.5)
 
-VAL_INTERVAL = 1
+VAL_INTERVAL = 10
 LOG_INTERVAL = 10
 SAVE_INTERVAL = 100
 
@@ -40,10 +40,12 @@ def train(
     lr: float,
     size: int,
     fpath: str,
-    mode: str = "physics",
+    mode: str,
+    task: np.ndarray,
 ) -> dict:
-
+    task = np.array(task, dtype=np.float32)
     print(f"Current Mode: {mode}")
+    print(f"Current Task: {task}")
     # model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
     model = hybrid_model(neuron_size=64, layer_size=6, dim=6)
 
@@ -61,11 +63,11 @@ def train(
     print(model)
 
     if mode == "data":
-        x_train, y_train = generate_data(mode=mode, n=size, task=TASK)
+        x_train, y_train = generate_data(mode=mode, n=size, task=task)
         x_train = to_tensor(x_train)
         y_train = to_tensor(y_train).reshape(-1, 1)
 
-        x_val, y_val = generate_data(mode=mode, n=size, task=TASK)
+        x_val, y_val = generate_data(mode=mode, n=size, task=task)
         x_val = to_tensor(x_val)
         y_val = to_tensor(y_val).reshape(-1, 1)
 
@@ -75,15 +77,15 @@ def train(
         y_val = y_val.to(DEVICE)
 
     elif mode == "hybrid":
-        x_train, y_train = generate_data(mode="data", n=size, task=TASK)
+        x_train, y_train = generate_data(mode="data", n=size, task=task)
         x_train = to_tensor(x_train)
         y_train = to_tensor(y_train).reshape(-1, 1)
 
-        x_f_train, y_f_train = generate_data(mode="physics", n=10000, task=TASK)
+        x_f_train, y_f_train = generate_data(mode="physics", n=10000, task=task)
         x_f_train = to_tensor(x_f_train)
         y_f_train = to_tensor(y_f_train).reshape(-1, 1)
 
-        x_val, y_val = generate_data(mode="data", n=size, task=TASK)
+        x_val, y_val = generate_data(mode="data", n=size, task=task)
         x_val = to_tensor(x_val)
         y_val = to_tensor(y_val).reshape(-1, 1)
 
@@ -98,10 +100,10 @@ def train(
 
     loss_func = nn.MSELoss()
 
-    losses_train = []
-    losses_val = []
-
-    nrmse = {"id": 0.0, "ood": 0.0}
+    # generate x, y to calculate pf
+    x, y = generate_data(mode="data", n=70000, task=np.array(task))
+    prob = calc_actual_prob(y)
+    wandb.log({"actual_pf": prob})
 
     if mode == "data":
 
@@ -117,77 +119,19 @@ def train(
 
             optim.step()
 
-            losses_train += [loss_train.item()]
-
             if epoch % VAL_INTERVAL == 0:
                 model.eval()
                 loss_val = loss_func(y_val, model(x_val))
-                losses_val += [loss_val.item()]
                 mse = compute_mse(model(x_val).cpu().detach().numpy(), y_val.cpu().detach().numpy())
-                # wandb.log({"loss_val": loss_val.item(), "mse": mse}, commit=False)
+                prob_hat = calc_modeled_prob(model, x)
+                wandb.log({"loss_val": loss_val.item(), "mse": mse, "pf": prob_hat}, commit=False)
 
-            # wandb.log({"ep": epoch, "loss_train": loss_train.item()})
-
-            if epoch % SAVE_INTERVAL == 0:
-                pass
-
-    elif mode == "physics":
-        losses_b_train = []
-        losses_i_train = []
-        losses_f_train = []
-
-        for epoch in trange(1, epochs + 1):
-            model.train()
-
-            optim.zero_grad()
-
-            loss_f_train = model.calc_loss_f(x_f_train, y_f_train)
-
-            loss_f_train.to(DEVICE)
-
-            loss_train = loss_b_train + loss_f_train + loss_i_train
-
-            loss_train.backward()
-
-            optim.step()
-
-            losses_b_train += [loss_b_train.item()]
-            losses_i_train += [loss_i_train.item()]
-            losses_f_train += [loss_f_train.item()]
-            losses_train += [loss_train.item()]
-
-            if epoch % VAL_INTERVAL == 0:
-                model.eval()
-
-                loss_val = loss_func(y_val, model(in_val))
-                # print(f"Validation loss {loss_val.item(): .3f}")
-                losses_val += [loss_val.item()]
-                nrmse = compute_nrmse(
-                    model(in_val).cpu().detach().numpy(), y_val.cpu().detach().numpy()
-                )
-                wandb.log({"loss_val": loss_train.item(), "nrmse": nrmse}, commit=False)
+            wandb.log({"ep": epoch, "loss_train": loss_train.item()})
 
             if epoch % SAVE_INTERVAL == 0:
                 pass
-
-            wandb.log(
-                {
-                    "ep": epoch,
-                    "loss_b_train": loss_b_train.item(),
-                    "loss_i_train": loss_i_train.item(),
-                    "loss_f_train": loss_f_train.item(),
-                    "loss_train": loss_train.item(),
-                }
-            )
 
     elif mode == "hybrid":
-        fname = f"./logs/{mode}"
-        if not os.path.exists(fname):
-            os.makedirs(fname)
-        losses_d_train = []
-        losses_b_train = []
-        losses_i_train = []
-        losses_f_train = []
 
         for epoch in trange(1, epochs + 1):
             model.train()
@@ -207,18 +151,13 @@ def train(
 
             optim.step()
 
-            losses_d_train += [loss_d_train.item()]
-            losses_f_train += [loss_f_train.item()]
-            losses_train += [loss_train.item()]
-
             if epoch % VAL_INTERVAL == 0:
                 model.eval()
 
                 loss_val = loss_func(y_val, model(x_val))
-                losses_val += [loss_val.item()]
-
                 mse = compute_mse(model(x_val).cpu().detach().numpy(), y_val.cpu().detach().numpy())
-                wandb.log({"loss_val": loss_train.item(), "mse": mse}, commit=False)
+                prob_hat = calc_modeled_prob(model, x)
+                wandb.log({"loss_val": loss_val.item(), "mse": mse, "pf": prob_hat}, commit=False)
 
             if epoch % SAVE_INTERVAL == 0:
                 pass
@@ -235,22 +174,24 @@ def train(
     # fname = os.path.join(wandb.run.dir, "model.h5")
     # save(epoch, model, optim, loss_train.item(), fname)
 
-    prob_hat, prob = calc_act_mod_prob(model, 1000000)
-    print(f"Actual Pf: {prob:.5f}")
-    print(f"Modeled Pf: {prob_hat:.5f}")
-    return nrmse
+    # prob_hat, prob = calc_act_mod_prob(model, 1000000)
+    # print(f"Actual Pf: {prob:.5f}")
+    # print(f"Modeled Pf: {prob_hat:.5f}")
 
 
-def calc_act_mod_prob(model, n):
-    x, y = generate_data(mode="data", n=n, task=np.array(TASK))
+def calc_modeled_prob(model, x):
     x = to_tensor(x).to(DEVICE)
     model = model.to(DEVICE)
     y_hat = model(x)
 
     prob_hat = calc_prob(y_hat)
-    prob = calc_prob(y)
 
-    return prob_hat, prob
+    return prob_hat
+
+
+def calc_actual_prob(y):
+    prob = calc_prob(y)
+    return prob
 
 
 def calc_prob(y):
@@ -262,6 +203,6 @@ def calc_prob(y):
 
 
 if __name__ == "__main__":
-    _, y = generate_data(mode="data", n=1000000, task=np.array(TASK))
+    _, y = generate_data(mode="data", n=70000, task=np.array(TASK))
     prob = calc_prob(y)
     print(f"Actual Pf: {prob:.5f}")
