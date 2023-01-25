@@ -49,17 +49,16 @@ class hybrid_model(nn.Module):
             return 0
 
         u_hat = self(data)
-        x1 = data[:, 0].reshape(-1, 1)
-        x2 = data[:, 1].reshape(-1, 1)
-        x3 = data[:, 2].reshape(-1, 1)
+        # yf1 = data[:, 2].reshape(-1, 1)
 
         deriv_1 = autograd.grad(u_hat.sum(), data, create_graph=True)
-        u_hat_x1 = deriv_1[0][:, 0].reshape(-1, 1)
-        deriv_2 = autograd.grad(u_hat_x1.sum(), data, create_graph=True)
-        u_hat_x1_x1 = deriv_2[0][:, 0].reshape(-1, 1)
+        # u_hat_yf1 = deriv_1[0][:, 2].reshape(-1, 1)
+        u_hat_yr = deriv_1[0][:, 5].reshape(-1, 1)
+
 
         # modify here
-        f = u_hat + u_hat_x1_x1
+        # f = u_hat_yf1**2
+        f = u_hat_yr
         func = nn.MSELoss()
 
         return func(f, target)

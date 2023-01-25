@@ -14,11 +14,9 @@ from models import hybrid_model
 from metrics import compute_nrmse, compute_mse
 from data import generate_data, to_tensor, generate_tasks
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-TASK = (1.0, 0.1, 1.0, 1.5, 2.0, 0.5)
-
-VAL_INTERVAL = 10
+# k1, k2, f1, t1, m, r
+TASK = (1.0, 0.1, 1.0, 0.7, 1.1, 0.3)
+VAL_INTERVAL = 100
 LOG_INTERVAL = 10
 SAVE_INTERVAL = 100
 
@@ -39,13 +37,17 @@ def train(
     epochs: int,
     lr: float,
     size: int,
+    f_size: int,
     fpath: str,
     mode: str,
     task: np.ndarray,
+    device_no: int,
 ) -> dict:
     task = np.array(task, dtype=np.float32)
     print(f"Current Mode: {mode}")
     print(f"Current Task: {task}")
+    DEVICE = torch.device(f"cuda:{device_no}" if torch.cuda.is_available() else "cpu")
+    print(f"Current Device: {DEVICE}")
     # model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
     model = hybrid_model(neuron_size=64, layer_size=6, dim=6)
 
@@ -81,7 +83,7 @@ def train(
         x_train = to_tensor(x_train)
         y_train = to_tensor(y_train).reshape(-1, 1)
 
-        x_f_train, y_f_train = generate_data(mode="physics", n=10000, task=task)
+        x_f_train, y_f_train = generate_data(mode="physics", n=f_size, task=task)
         x_f_train = to_tensor(x_f_train)
         y_f_train = to_tensor(y_f_train).reshape(-1, 1)
 
@@ -101,7 +103,7 @@ def train(
     loss_func = nn.MSELoss()
 
     # generate x, y to calculate pf
-    x, y = generate_data(mode="data", n=70000, task=np.array(task))
+    x, y = generate_data(mode="data", n=1000000, task=np.array(task))
     prob = calc_actual_prob(y)
     wandb.log({"actual_pf": prob})
 
@@ -123,8 +125,16 @@ def train(
                 model.eval()
                 loss_val = loss_func(y_val, model(x_val))
                 mse = compute_mse(model(x_val).cpu().detach().numpy(), y_val.cpu().detach().numpy())
-                prob_hat = calc_modeled_prob(model, x)
-                wandb.log({"loss_val": loss_val.item(), "mse": mse, "pf": prob_hat}, commit=False)
+                prob_hat = calc_modeled_prob(model, x, DEVICE)
+                wandb.log(
+                    {
+                        "loss_val": loss_val.item(),
+                        "mse": mse,
+                        "pf": prob_hat,
+                        "pf_error": np.abs(prob - prob_hat),
+                    },
+                    commit=False,
+                )
 
             wandb.log({"ep": epoch, "loss_train": loss_train.item()})
 
@@ -156,8 +166,16 @@ def train(
 
                 loss_val = loss_func(y_val, model(x_val))
                 mse = compute_mse(model(x_val).cpu().detach().numpy(), y_val.cpu().detach().numpy())
-                prob_hat = calc_modeled_prob(model, x)
-                wandb.log({"loss_val": loss_val.item(), "mse": mse, "pf": prob_hat}, commit=False)
+                prob_hat = calc_modeled_prob(model, x, DEVICE)
+                wandb.log(
+                    {
+                        "loss_val": loss_val.item(),
+                        "mse": mse,
+                        "pf": prob_hat,
+                        "pf_error": np.abs(prob - prob_hat),
+                    },
+                    commit=False,
+                )
 
             if epoch % SAVE_INTERVAL == 0:
                 pass
@@ -179,9 +197,9 @@ def train(
     # print(f"Modeled Pf: {prob_hat:.5f}")
 
 
-def calc_modeled_prob(model, x):
-    x = to_tensor(x).to(DEVICE)
-    model = model.to(DEVICE)
+def calc_modeled_prob(model, x, device):
+    x = to_tensor(x).to(device)
+    model = model.to(device)
     y_hat = model(x)
 
     prob_hat = calc_prob(y_hat)
@@ -203,6 +221,7 @@ def calc_prob(y):
 
 
 if __name__ == "__main__":
-    _, y = generate_data(mode="data", n=70000, task=np.array(TASK))
+    _, y = generate_data(mode="data", n=1000000, task=np.array(TASK))
     prob = calc_prob(y)
+    print(f"Task: {TASK}")
     print(f"Actual Pf: {prob:.5f}")

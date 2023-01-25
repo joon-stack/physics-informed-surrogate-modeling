@@ -14,18 +14,18 @@ from copy import deepcopy
 
 from train import train
 
-DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 
 def main(args: dict) -> None:
-    print(f"device: {DEVICE}")
     train(
         epochs=args.epochs,
         lr=args.learning_rate,
         size=args.d_size,
+        f_size=args.f_size,
         fpath=args.fpath,
         mode=args.mode,
         task=args.task,
+        device_no=args.device_no,
     )
 
 
@@ -50,11 +50,15 @@ if __name__ == "__main__":
         default=0.0001,
         help="learning rate",
     )
+    parser.add_argument(
+        "--f_size", type=int, default=1000, help="number of physics data (hybrid learning)"
+    )
 
     parser.add_argument("--fpath", type=str, default=None, help="pre-trained model path")
     parser.add_argument("--project", type=str, default="nonlin_oscil", help="wandb project name")
     parser.add_argument("--run_name", type=str, default=None, help="wandb run name")
     parser.add_argument("--task", nargs="+", help="Task (in a list form)", required=True)
+    parser.add_argument("--device_no", type=int, default=0, help="Cuda number")
     cfg = parser.parse_args()
     wandb.init(project=cfg.project, config=cfg)
     if cfg.run_name != None:
