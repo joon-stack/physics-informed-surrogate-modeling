@@ -85,7 +85,9 @@ def train(
 
         x_f_train, y_f_train = generate_data(mode="physics", n=f_size, task=task)
         x_f_train = to_tensor(x_f_train)
-        y_f_train = to_tensor(y_f_train).reshape(-1, 1)
+        # y_f_train = to_tensor(y_f_train).reshape(-1, 1)
+
+        y_f_train = to_tensor(y_f_train)
 
         x_val, y_val = generate_data(mode="data", n=size, task=task)
         x_val = to_tensor(x_val)

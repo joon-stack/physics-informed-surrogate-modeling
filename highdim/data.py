@@ -2,23 +2,45 @@ import numpy as np
 import torch
 from scipy.stats import qmc
 
-DIM = 100
+DIM = 40
 
 
 def generate_y(y1: np.ndarray, u: np.ndarray) -> np.ndarray:
-    x = y1 * u
+    x = y1 + u
     n = y1.shape[1]
     sigma = 0.2
     y = (n + 3 * sigma * np.sqrt(n)) - np.sum(x, 1)
     return y
 
 
-def generate_tasks(n: int):
-    sampler = qmc.LatinHypercube(d=DIM)
+def generate_tasks(n: int, seed=None):
+    sampler = qmc.LatinHypercube(d=DIM, seed=seed)
     sample_sup = sampler.random(n)
     sample_qry = sampler.random(n)
-    l_bounds = np.full(DIM, 0.8)
-    u_bounds = np.full(DIM, 1.2)
+    l_bounds = np.full(DIM, -0.2)
+    u_bounds = np.full(DIM, 0.2)
+    sup = qmc.scale(sample_sup, l_bounds, u_bounds)
+    qry = qmc.scale(sample_qry, l_bounds, u_bounds)
+    return sup, qry
+
+
+def generate_tasks_out(n: int, seed=None):
+    sampler = qmc.LatinHypercube(d=DIM, seed=seed)
+    sample_sup = sampler.random(n)
+    sample_qry = sampler.random(n)
+    l_bounds = np.full(DIM, -0.4)
+    u_bounds = np.full(DIM, 0.4)
+    sup = qmc.scale(sample_sup, l_bounds, u_bounds)
+    qry = qmc.scale(sample_qry, l_bounds, u_bounds)
+    return sup, qry
+
+
+def generate_tasks_out2(n: int, seed=None):
+    sampler = qmc.LatinHypercube(d=DIM, seed=seed)
+    sample_sup = sampler.random(n)
+    sample_qry = sampler.random(n)
+    l_bounds = np.full(DIM, -1.0)
+    u_bounds = np.full(DIM, 1.0)
     sup = qmc.scale(sample_sup, l_bounds, u_bounds)
     qry = qmc.scale(sample_qry, l_bounds, u_bounds)
     return sup, qry
@@ -26,10 +48,10 @@ def generate_tasks(n: int):
 
 def generate_data(mode: str, n: int, task: np.ndarray):
 
-    ones = np.ones(DIM, dtype=np.float32)
-    sigma = np.ones(DIM, dtype=np.float32)
+    mu = np.zeros(DIM, dtype=np.float32)
+    sigma = np.full(DIM, 0.2, dtype=np.float32)
 
-    x = np.random.normal(ones, sigma, (n, DIM))
+    x = np.random.lognormal(mu, sigma, (n, DIM))
     if mode == "data":
 
         y = generate_y(x, task)
@@ -37,10 +59,7 @@ def generate_data(mode: str, n: int, task: np.ndarray):
         return x, y
 
     elif mode == "physics":
-        # f_yf1**2 = 4 * uf1 ** 2
-        # y = 4 * uf1**2
-        # f_yr = 3
-        y = np.full(yf1.shape, 3.0)
+        y = np.full((n, DIM), -1.0, dtype=np.float32)
         return x, y
 
 
@@ -72,4 +91,4 @@ def generate_task_data(sup: np.ndarray, qry: np.ndarray, mode: str, size_sup: in
 
 
 if __name__ == "__main__":
-    print(generate_y(1, 1, 1, 1, 1, 1, 1.0, 0.1, 1.0, 1.0, 1.0, 0.5))
+    print(generate_y(np.ones((1, DIM), np.float32), np.ones((1, DIM), np.float32)))

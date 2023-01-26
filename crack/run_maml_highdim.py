@@ -7,7 +7,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--project",
         type=str,
-        default="maml_oscil",
+        default="maml_highdim",
         help="project name",
     )
     parser.add_argument(
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         help="learning rate of outer steps",
     )
     parser.add_argument(
-        "--mode", type=str, default="hybrid", help="training mode (data, physics, hybrid)"
+        "--mode", type=str, default="data", help="training mode (data, physics, hybrid)"
     )
     parser.add_argument(
         "--num_sample_tasks",

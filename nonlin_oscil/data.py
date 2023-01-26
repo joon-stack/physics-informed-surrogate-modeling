@@ -77,10 +77,10 @@ def generate_data(mode: str, n: int, task: np.ndarray):
     elif mode == "physics":
         # f_yf1**2 = 4 * uf1 ** 2
         y1 = 4 * uf1**2
-        y1.reshape(yf1.shape)
+        y1 = np.full(yf1.shape, y1).reshape(-1, 1)
         # f_yr = 3
-        y2 = np.full(yf1.shape, 3.0)
-        y = torch.cat([y1, y2], 1)
+        y2 = np.full(yf1.shape, 3.0).reshape(-1, 1)
+        y = np.hstack([y1, y2])
         return x, y
 
 

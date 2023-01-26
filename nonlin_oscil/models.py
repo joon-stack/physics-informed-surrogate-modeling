@@ -58,6 +58,7 @@ class hybrid_model(nn.Module):
         # modify here
         # f = u_hat_yf1**2
         f = torch.cat([u_hat_yf1**2, u_hat_yr], 1)
+
         func = nn.MSELoss()
 
         return func(f, target)
