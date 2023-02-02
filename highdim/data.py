@@ -1,8 +1,9 @@
 import numpy as np
 import torch
 from scipy.stats import qmc
+import pandas as pd
 
-DIM = 40
+DIM = 100
 
 
 def generate_y(y1: np.ndarray, u: np.ndarray) -> np.ndarray:
@@ -90,5 +91,11 @@ def generate_task_data(sup: np.ndarray, qry: np.ndarray, mode: str, size_sup: in
     return (support, query)
 
 
+def output_data(n: int):
+    x, y = generate_data(mode="data", n=n, task=np.zeros(DIM, dtype=np.float32))
+    data = np.hstack([x, y.reshape(-1, 1)])
+    pd.DataFrame(data).to_csv("sample.csv", header=False, index=False)
+
+
 if __name__ == "__main__":
-    print(generate_y(np.ones((1, DIM), np.float32), np.ones((1, DIM), np.float32)))
+    output_data(100)

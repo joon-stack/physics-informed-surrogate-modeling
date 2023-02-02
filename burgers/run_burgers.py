@@ -68,7 +68,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_supervised_x_data",
         type=int,
-        default=5,
+        default=2,
         help="number of labeled x data (supervised learning)",
     )
     parser.add_argument(
