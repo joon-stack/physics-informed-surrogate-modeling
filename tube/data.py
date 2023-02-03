@@ -18,7 +18,7 @@ def calc_misc(t, d, L1, L2, F1, F2, P, T, Sy, theta1, theta2):
     return M, A, I, J, sigma_x, tau_zx, sigma_max
 
 
-def generate_y(y1: np.ndarray, u: np.ndarray) -> np.ndarray:
+def generate_x_y(y1: np.ndarray, u: np.ndarray) -> np.ndarray:
     x = y1 * u
     t = x[:, 0]
     d = x[:, 1]
@@ -36,7 +36,7 @@ def generate_y(y1: np.ndarray, u: np.ndarray) -> np.ndarray:
         t, d, L1, L2, F1, F2, P, T, Sy, theta1, theta2
     )
     y = Sy - sigma_max
-    return y
+    return x, y
 
 
 def generate_tasks(n: int, seed=None):
@@ -102,7 +102,7 @@ def generate_data(mode: str, n: int, task: np.ndarray):
     # p = np.random.gumbel(12, 1.2, (n, 1))
     # x = np.hstack([x, p])
     if mode == "data":
-        y = generate_y(x, task)
+        x, y = generate_x_y(x, task)
         return x, y
 
     elif mode == "physics":

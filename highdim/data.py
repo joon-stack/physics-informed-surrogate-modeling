@@ -6,12 +6,12 @@ import pandas as pd
 DIM = 100
 
 
-def generate_y(y1: np.ndarray, u: np.ndarray) -> np.ndarray:
+def generate_x_y(y1: np.ndarray, u: np.ndarray) -> np.ndarray:
     x = y1 + u
     n = y1.shape[1]
     sigma = 0.2
     y = (n + 3 * sigma * np.sqrt(n)) - np.sum(x, 1)
-    return y
+    return x, y
 
 
 def generate_tasks(n: int, seed=None):
@@ -54,8 +54,7 @@ def generate_data(mode: str, n: int, task: np.ndarray):
 
     x = np.random.lognormal(mu, sigma, (n, DIM))
     if mode == "data":
-
-        y = generate_y(x, task)
+        x, y = generate_x_y(x, task)
 
         return x, y
 
