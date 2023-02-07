@@ -18,7 +18,7 @@ class hybrid_model(nn.Module):
             if i == 0:
                 layer = nn.Linear(dim, neuron_size)
             elif i == layer_size - 1:
-                layer = nn.Linear(neuron_size, 1)
+                layer = nn.Linear(neuron_size, 2)
             else:
                 layer = nn.Linear(neuron_size, neuron_size)
 
@@ -72,7 +72,7 @@ class hybrid_model(nn.Module):
     def calc_loss_f(self, data: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         if data == None:
             return 0
-        u_hat = self(data)
+        u_hat = self(data)[:, 1]
 
         deriv_1 = autograd.grad(u_hat.sum(), data, create_graph=True)
         u_hat_x = deriv_1[0]
@@ -85,6 +85,7 @@ class hybrid_model(nn.Module):
 
         # f = torch.cat((u_hat_xxx + 1, u_hat_xxxx), dim=1)
         f = u_hat_xxxx
+
 
 
         func = nn.MSELoss()

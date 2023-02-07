@@ -1,24 +1,51 @@
 from anastruct import SystemElements
-ss = SystemElements()
+import numpy as np
+import matplotlib.pyplot as plt
 
-E = 2e10
-I = 0.0001/12
-ss.add_element(location=[[0, 0], [0.2, 0]], EI=E*I)
-ss.add_element(location=[[0.2, 0], [0.4, 0]], EI=2*E*I)
-ss.add_element(location=[[0.4, 0], [0.6, 0]], EI=3*E*I)
-ss.add_element(location=[[0.6, 0], [0.8, 0]], EI=4*E*I)
-ss.add_element(location=[[0.8, 0], [1.0, 0]], EI=5*E*I)
+def get_fem_data(task, design_size, element_size):
+    b = task[:design_size]
+    h = task[design_size:]
+    beam_length = 1.0
 
-ss.add_support_fixed(node_id=1)
+    E = 2e11
+    P = 400000
+    I = b * h**3 / 12
+    
+    nodes = np.linspace(0.0, beam_length, element_size+1)
+    nodes_for_query = nodes[:element_size]
+    nodes_for_element = np.linspace(0.0, beam_length, design_size+1)
 
-# ss.q_load(element_id=[1,2,3,4,5], qw=-1)
-ss.point_load(node_id=6, Fy=-50000)
-ss.solve()
+    b_all = np.zeros(element_size)
+    h_all = np.zeros(element_size)
 
-ss.show_structure()
-ss.show_displacement()
-ss.show_bending_moment()
-x, y= ss.show_displacement(values_only=True)
-x, y= ss.show_bending_moment(values_only=True)
-print(y)
-# print(t)
+    for i in range(design_size):
+        b_all = np.where((nodes_for_query > nodes_for_element[i]) & (nodes_for_query <= nodes_for_element[i+1]), b[i], b_all)
+        h_all = np.where((nodes_for_query > nodes_for_element[i]) & (nodes_for_query <= nodes_for_element[i+1]), b[i], h_all)
+    b_all = np.where(nodes_for_query == 0.0, b[0], b_all)
+    h_all = np.where(nodes_for_query == 0.0, h[0], h_all)
+    I_all = b_all * h_all**3 / 12
+
+    ss = SystemElements()
+    for i in range(element_size):
+        ss.add_element(location=[[nodes[i], 0], [nodes[i+1], 0]], EI=E*I_all[i])
+    ss.add_support_fixed(node_id=1)
+    ss.point_load(node_id=element_size+1, Fy=-P)
+    # ss.point_load(node_id=element_size//2, Fy=-P)
+
+    ss.solve()
+    el_res = ss.get_element_result_range('moment')
+    no_res = ss.get_node_result_range('uy')
+
+    stress = np.array(el_res) * h_all / I_all
+    stress = np.append(stress, 0.0)
+    disp = -np.array(no_res)
+
+
+    # stress /= 1e15
+    # disp /= 10000
+
+
+    # ss.show_structure()
+    # ss.show_displacement()
+
+    return nodes, stress, disp

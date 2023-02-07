@@ -2,42 +2,32 @@ import numpy as np
 import torch
 from scipy.stats import qmc
 import random
+from fem import get_fem_data
+import matplotlib.pyplot as plt
 
-DIM = 11
+DESIGN_SIZE = 5
 
+def normalize(y_min: np.ndarray, y_max: np.ndarray, y: np.ndarray):
+    y_max = np.broadcast_to(y_max.reshape(-1, 1), y.shape)
+    y_min = np.broadcast_to(y_min.reshape(-1, 1), y.shape)
+    res = (y - y_min) / (y_max - y_min)
+    # plt.plot(y[:, 0])
+    # plt.plot(y[:, 1])
+    # plt.show()
+    return res
 
-def calc_misc(t, d, L1, L2, F1, F2, P, T, Sy, theta1, theta2):
-    M = F1 * L1 * np.cos(theta1) + F2 * L2 * np.cos(theta2)
-    A = np.pi * (d**2 - (d - 2 * t) ** 2) / 4
-    I = np.pi * (d**4 - (d - 2 * t) ** 4) / 64
-    J = 2 * I
-
-    sigma_x = ((P + F1 * np.sin(theta1) + F2 * np.sin(theta2)) / A + M * d / 2 / I) * 1000
-    tau_zx = T * d / 2 / J * 1000
-    sigma_max = np.sqrt(sigma_x**2 + 3 * tau_zx**2)
-
-    return M, A, I, J, sigma_x, tau_zx, sigma_max
-
-
-def generate_x_y(y1: np.ndarray, u: np.ndarray) -> np.ndarray:
-    x = y1
-    # y = x**4 / 24 - 1 * x**3 / 6 + 1 * x**2 / 4
-    y = -1 / 6 * x**3 + 1 / 2 * x**2
-    return x, y
-
+def denormalize(y_min: np.ndarray, y_max: np.ndarray, y: np.ndarray):
+    y_max = np.broadcast_to(y_max.reshape(1, -1), y.shape)
+    y_min = np.broadcast_to(y_min.reshape(1, -1), y.shape)
+    res = y * (y_max - y_min) + y_min
+    return res
 
 def generate_tasks(n: int, seed=None):
-    sampler = qmc.LatinHypercube(d=DIM, seed=seed)
+    sampler = qmc.LatinHypercube(d=DESIGN_SIZE * 2, seed=seed)
     sample_sup = sampler.random(n)
     sample_qry = sampler.random(n)
-    l_bounds = (
-        np.array([5.0, 42.0, 120.0, 60.0, 3.0, 3.0, 90.0, 175.0, 5.0, 10.0, 12.0], dtype=np.float32)
-        * 0.8
-    )
-    u_bounds = (
-        np.array([5.0, 42.0, 120.0, 60.0, 3.0, 3.0, 90.0, 175.0, 5.0, 10.0, 12.0], dtype=np.float32)
-        * 1.2
-    )
+    l_bounds = [0.01, 0.01, 0.01, 0.01, 0.01, 0.05, 0.05, 0.05, 0.05, 0.05]
+    u_bounds = [0.1, 0.1, 0.1, 0.1, 0.1, 0.5, 0.5, 0.5, 0.5, 0.5]
 
     sup = qmc.scale(sample_sup, l_bounds, u_bounds)
     qry = qmc.scale(sample_qry, l_bounds, u_bounds)
@@ -86,19 +76,30 @@ def load_data():
     return x, u
 
 
-def generate_data(mode: str, n: int, task: np.ndarray):
+def fem_data(task: np.ndarray, design_size: int, element_size: int):
+    x, stress, disp = get_fem_data(task, design_size, element_size)
+    x = np.array(x)
+    stress = np.array(stress)
+    disp = np.array(disp)
 
-    sampler = qmc.LatinHypercube(d=1, seed=None)
-    sample = sampler.random(n)
-    x = qmc.scale(sample, 0.0, 1.0)
+    return x, stress, disp
+
+
+def generate_data(mode: str, n: int, task: np.ndarray):
+    # sampler = qmc.LatinHypercube(d=1, seed=None)
+    # sample = sampler.random(n)
+    # x = qmc.scale(sample, 0.0, 1.0)
+    x, stress, disp = fem_data(task=task, design_size=5, element_size=100)
     if mode == "data":
         # x, y = generate_x_y(x, task)
-        x, y = load_data()
+        # x, y = load_data()
         idx = random.sample(range(len(x)), n)
-        x = x[idx]
-        y = y[idx]
-
-        return x, y
+        idx.sort()
+        x_sample = x[idx]
+        stress_sample = stress[idx]
+        disp_sample = disp[idx]
+        y = np.vstack((stress_sample, disp_sample))
+        return x_sample, y
 
     elif mode == "boundary":
         x = np.hstack([np.zeros(n), np.full(n, 1.0, dtype=np.float32)]).reshape(-1, 1)
@@ -110,36 +111,6 @@ def generate_data(mode: str, n: int, task: np.ndarray):
         # y_shape = (x.shape[0], x.shape[1] * 2)
         y = np.zeros(x.shape)
         return x, y
-
-
-def generate_data_test(n: int):
-    mu = np.array([5, 42, 120, 60, 3, 3, 90, 175, 5, 10], dtype=np.float32)
-    sigma = np.array([0.1, 0.5, 1.2, 0.6, 0.3, 0.3, 9, 17.5, 0.25, 0.5], dtype=np.float32)
-    x = np.random.normal(mu, sigma, (n, 10))
-    t = x[:, 0]
-    d = x[:, 1]
-    L1 = x[:, 2]
-    L2 = x[:, 3]
-    F1 = x[:, 4]
-    F2 = x[:, 5]
-    T = x[:, 6]
-    Sy = x[:, 7]
-    theta1 = x[:, 8] * np.pi / 180
-    theta2 = x[:, 9] * np.pi / 180
-    P = np.random.gumbel(12, 1.2, n)
-
-    M = F1 * L1 * np.cos(theta1) + F2 * L2 * np.cos(theta2)
-    A = np.pi * (d**2 - (d - 2 * t) ** 2) / 4
-    I = np.pi * (d**4 - (d - 2 * t) ** 4) / 64
-    J = 2 * I
-    # print(d, t, A, I)
-
-    sigma_x = ((P + F1 * np.sin(theta1) + F2 * np.sin(theta2)) / A + M * d / 2 / I) * 1000
-    tau_zx = T * d / 2 / J * 1000
-    sigma_max = np.sqrt(sigma_x**2 + 3 * tau_zx**2)
-    y = Sy - sigma_max
-
-    return x, y
 
 
 def to_tensor(x: np.array, requires_grad: bool = True) -> torch.Tensor:
@@ -167,7 +138,3 @@ def generate_task_data(sup: np.ndarray, qry: np.ndarray, mode: str, size_sup: in
     query = (query_key, query_data)
 
     return (support, query)
-
-
-if __name__ == "__main__":
-    print(load_data())
