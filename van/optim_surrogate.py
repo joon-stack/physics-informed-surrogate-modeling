@@ -228,7 +228,7 @@ class Sim():
 
 
 def optimize_beam(mode: str, fpath: str):
-    b0 = np.full(ELEMENT_SIZE, 0.1, dtype=np.float32)
+    b0 = np.full(ELEMENT_SIZE, 0.01, dtype=np.float32)
     h0 = np.full(ELEMENT_SIZE, 0.2, dtype=np.float32)
     x0 = np.hstack([b0, h0])
     model = hybrid_model(neuron_size=64, layer_size=6, dim=1)
@@ -255,6 +255,7 @@ def optimize_beam(mode: str, fpath: str):
     bnds = [(0.01, 0.1) for _ in range(ELEMENT_SIZE)]
     bnds_2 = [(0.05, 0.4) for _ in range(ELEMENT_SIZE)]
     bnds = bnds + bnds_2
+    # res = minimize(sim.target, x0, method='SLSQP', constraints=cons, bounds=bnds, options={"maxiter": 1000, "disp": True})
     res = minimize(sim.target, x0, method='trust-constr', constraints=cons, bounds=bnds, options={"maxiter": 1000, "disp": True})
 
     fig, ax = plt.subplots(2, 2)
@@ -262,11 +263,10 @@ def optimize_beam(mode: str, fpath: str):
     ax[0][1].plot(sim.disp_history)
     ax[1][0].plot(sim.stress_history)
     ax[1][1].plot(sim.error_history)
-    ax[1]
 
     is_loaded = "scratch" if fpath == None else "load"
     plt.savefig(f"van/figures/{mode}_{is_loaded}.png")
-    plt.show()
+    # plt.show()
     # plt.savefig(f"van/figures/{mode}_{fpath}.png")
     return res
 
@@ -293,16 +293,17 @@ def optimize_beam_with_FEM(mode: str, fpath: str):
     bnds = [(0.01, None) for _ in range(ELEMENT_SIZE)]
     bnds_2 = [(0.05, None) for _ in range(ELEMENT_SIZE)]
     bnds = bnds + bnds_2
-    res = minimize(sim.target, x0, method='SLSQP', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
-    # res = minimize(sim.target, x0, method='trust-constr', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
+    # res = minimize(sim.target, x0, method='SLSQP', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
+    res = minimize(sim.target, x0, method='trust-constr', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
     # print(sim.ncall)
 
-    fig, ax = plt.subplots(1, 3)
-    ax[0].plot(sim.history)
-    ax[1].plot(sim.disp_history)
-    ax[2].plot(sim.stress_history)
-    plt.show()
-    sim.plot(res.x)
+    fig, ax = plt.subplots(2, 2)
+    ax[0][0].plot(sim.history)
+    ax[0][1].plot(sim.disp_history)
+    ax[1][0].plot(sim.stress_history)
+    plt.savefig(f"van/figures/fem.png")
+    # plt.show()
+    # sim.plot(res.x)
     return res
 
 
