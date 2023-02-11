@@ -104,12 +104,12 @@ class MAML:
 
         x_train, y_train = support
 
-        y_min = np.min(y_train, axis=1)
-        y_max = np.max(y_train, axis=1)
+        y_min = np.min(y_train, axis=0)
+        y_max = np.max(y_train, axis=0)
         y_train = normalize(y_min, y_max, y_train)
 
         x_train = to_tensor(x_train).reshape(-1, 1)
-        y_train = to_tensor(y_train).T
+        y_train = to_tensor(y_train)
 
         x_train = x_train.to(DEVICE)
         y_train = y_train.to(DEVICE)
@@ -198,7 +198,7 @@ class MAML:
             data_idx = random.sample(range(len(sup[0])), self.sampled_data_size)
 
             x_sup = sup[0][data_idx]
-            y_sup = sup[1][:, data_idx]
+            y_sup = sup[1][data_idx]
 
 
             sup = (x_sup, y_sup)
@@ -209,17 +209,21 @@ class MAML:
             model_outer.load_state_dict(phi)
             data_idx = random.sample(range(len(qry[0])), self.sampled_data_size)
             x_train = qry[0][data_idx]
-            y_train = qry[1][:, data_idx]
+            y_train = qry[1][data_idx]
+            y_train = y_train
 
-            y_min = np.min(y_train, axis=1)
-            y_max = np.max(y_train, axis=1)
+            y_min = np.min(y_train, axis=0)
+            y_max = np.max(y_train, axis=0)
+            # print(y_min.shape)
             y_train = normalize(y_min, y_max, y_train)
 
             x_train = to_tensor(x_train).reshape(-1, 1)
-            y_train = to_tensor(y_train).T
+            y_train = to_tensor(y_train)
 
             x_train = x_train.to(DEVICE)
             y_train = y_train.to(DEVICE)
+
+            # print(y_train.shape, model_outer(x_train).shape)
 
             loss = loss_fn(y_train, model_outer(x_train))
 

@@ -10,6 +10,10 @@ from data import *
 from tqdm import trange
 from metrics import *
 
+import wandb
+
+import argparse
+
 # Problem configurations
 ELEMENT_SIZE = 5
 BEAM_LENGTH = 1.0
@@ -66,16 +70,25 @@ class FEM():
         h = task[ELEMENT_SIZE:]
         res = np.sum(b*h*BEAM_LENGTH/ELEMENT_SIZE)
         self.history.append(res)
+        wandb.log({
+            "cost": res
+        })
         return res
 
     def cons_disp(self, task):
         disp, _ = self(task)
+        wandb.log({
+            "displacement": disp
+        })
         res = 1 - disp/ MAX_DISP
         # print(res)
         return res
 
     def cons_stress(self, task):
         _, stress = self(task)
+        wandb.log({
+            "stress": stress
+        })
         
         res = 1 - stress/ MAX_STRESS
         return res
@@ -172,7 +185,11 @@ class Sim():
         x_torch = torch.tensor(x_plot, dtype=torch.float32).to(DEVICE).reshape(-1, 1)
         y_plot = model(x_torch)
         y_plot = denormalize(y_min, y_max, y_plot.detach().cpu().numpy())
-        self.error_history.append(compute_nrmse(y_plot, y_ans))
+        nrmse = compute_nrmse(y_plot, y_ans)
+        self.error_history.append(nrmse)
+        wandb.log({
+            "nrmse": nrmse
+        })
         # print(f"NRMSE: {compute_nrmse(y_plot, y_ans):.4f}")
 
         # plt.plot(x_plot, y_plot[:, 0], 'r--', label='model')
@@ -204,6 +221,9 @@ class Sim():
         stress = self.stress
         res = 1 - stress / MAX_STRESS
         self.stress_history.append(stress)
+        wandb.log({
+            "stress": stress
+        })
         return res
 
     def cons_disp(self, task):
@@ -212,6 +232,9 @@ class Sim():
         disp = self.disp
         res = 1 - disp / MAX_DISP
         self.disp_history.append(disp)
+        wandb.log({
+            "displacement": disp
+        })
         return res
 
     def target(self, task: np.ndarray):
@@ -223,11 +246,14 @@ class Sim():
         h = task[ELEMENT_SIZE:]
         res = np.sum(b*h*BEAM_LENGTH/ELEMENT_SIZE)
         self.history.append(res)
+        wandb.log({
+            "cost": res
+        })
         return res
         
 
 
-def optimize_beam(mode: str, fpath: str):
+def optimize_beam(mode: str, fpath: str, method: str, d_size: int, steps: int):
     b0 = np.full(ELEMENT_SIZE, 0.01, dtype=np.float32)
     h0 = np.full(ELEMENT_SIZE, 0.2, dtype=np.float32)
     x0 = np.hstack([b0, h0])
@@ -238,7 +264,7 @@ def optimize_beam(mode: str, fpath: str):
     
     model = model.to(DEVICE)
     
-    sim = Sim(model, mode, 3, 10)
+    sim = Sim(model, mode, d_size, steps)
     sim(x0)
 
     cons = [{'type': 'ineq', 'fun': sim.cons_stress},
@@ -258,20 +284,25 @@ def optimize_beam(mode: str, fpath: str):
     # res = minimize(sim.target, x0, method='SLSQP', constraints=cons, bounds=bnds, options={"maxiter": 1000, "disp": True})
     res = minimize(sim.target, x0, method='trust-constr', constraints=cons, bounds=bnds, options={"maxiter": 1000, "disp": True})
 
-    fig, ax = plt.subplots(2, 2)
-    ax[0][0].plot(sim.history)
-    ax[0][1].plot(sim.disp_history)
-    ax[1][0].plot(sim.stress_history)
-    ax[1][1].plot(sim.error_history)
+    # fig, ax = plt.subplots(2, 2)
+    # ax[0][0].plot(sim.history)
+    # ax[0][1].plot(sim.disp_history)
+    # ax[1][0].plot(sim.stress_history)
+    # ax[1][1].plot(sim.error_history)
 
-    is_loaded = "scratch" if fpath == None else "load"
-    plt.savefig(f"van/figures/{mode}_{is_loaded}.png")
+    wandb.log({
+        "optim_x": res.x,
+        "optim_cost": res.fun
+    })
+
+    # is_loaded = "scratch" if fpath == None else "load"
+    # plt.savefig(f"van/figures/{mode}_{is_loaded}.png")
     # plt.show()
     # plt.savefig(f"van/figures/{mode}_{fpath}.png")
     return res
 
 
-def optimize_beam_with_FEM(mode: str, fpath: str):
+def optimize_beam_with_FEM(mode: str, fpath: str, method: str):
     b0 = np.full(ELEMENT_SIZE, 0.01, dtype=np.float32)
     h0 = np.full(ELEMENT_SIZE, 0.2, dtype=np.float32)
     x0 = np.hstack([b0, h0])
@@ -294,14 +325,19 @@ def optimize_beam_with_FEM(mode: str, fpath: str):
     bnds_2 = [(0.05, None) for _ in range(ELEMENT_SIZE)]
     bnds = bnds + bnds_2
     # res = minimize(sim.target, x0, method='SLSQP', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
-    res = minimize(sim.target, x0, method='trust-constr', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
+    res = minimize(sim.target, x0, method=method, constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
+    wandb.log({
+        "optim_x": res.x,
+        "optim_cost": res.fun
+    })
     # print(sim.ncall)
 
-    fig, ax = plt.subplots(2, 2)
-    ax[0][0].plot(sim.history)
-    ax[0][1].plot(sim.disp_history)
-    ax[1][0].plot(sim.stress_history)
-    plt.savefig(f"van/figures/fem.png")
+    # fig, ax = plt.subplots(2, 2)
+    # ax[0][0].plot(sim.history)
+    # ax[0][1].plot(sim.disp_history)
+    # ax[1][0].plot(sim.stress_history)
+    # plt.savefig(f"van/figures/fem_{method}.png")
+
     # plt.show()
     # sim.plot(res.x)
     return res
@@ -309,11 +345,25 @@ def optimize_beam_with_FEM(mode: str, fpath: str):
 
 if __name__ == "__main__":
     
-    res = optimize_beam(
-        mode="hybrid", 
-        fpath="van/models/data.h5",
-        # fpath=None,
-        )
-    # res = optimize_beam_with_FEM(mode="data", fpath=None)
+    parser = argparse.ArgumentParser("Train a model!")
+    parser.add_argument("--mode", type=str, default="data", help="training mode")
+    parser.add_argument("--method", type=str, default="trust-constr", help="optimization method: turst-constr or SLSQP")
+    parser.add_argument("--model", type=str, default="fem", help="optimize with FEM or DL model")
+    parser.add_argument("--d_size", type=int, default=3, help="data size to train DL model")
+    parser.add_argument("--steps", type=int, default=10, help="training steps to train DL model")
+    parser.add_argument("--fpath", type=str, default=None, help="load meta-trained path or not")
+    parser.add_argument("--run_name", type=str, default=None, help="wandb run name")
+    cfg = parser.parse_args()
+    
+    wandb.init(project="optimize", config=cfg)
+    if cfg.run_name != None:
+        wandb.run.name = cfg.run_name
+
+    if cfg.model == 'fem':
+        res = optimize_beam_with_FEM(mode=cfg.mode, fpath=None, method=cfg.method)
+    elif cfg.model == 'dl':
+        res = optimize_beam(mode=cfg.mode, fpath=cfg.fpath, method=cfg.method, d_size=cfg.d_size, steps=cfg.steps)
+    
+    
     print(res.x)
     print(res.fun)
