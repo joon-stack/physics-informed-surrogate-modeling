@@ -14,19 +14,21 @@ from copy import deepcopy
 
 from train import train
 
+VAL_INTERVAL = 100
+LOG_INTERVAL = 10
+SAVE_INTERVAL = 100
+
+RANDOM = False
+
 
 def main(args: dict) -> None:
     train(
         epochs=args.epochs,
         lr=args.learning_rate,
         size=args.d_size,
-        f_size=args.f_size,
-        b_size=args.b_size,
         fpath=args.fpath,
         mode=args.mode,
-        device_no=args.device_no,
-        seed=args.seed,
-        task_out=args.task_out,
+        task=args.task,
     )
 
 
@@ -36,7 +38,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--d_size",
         type=int,
-        default=100,
+        default=10,
         help="number of labeled data (supervised learning)",
     )
     parser.add_argument(
@@ -51,21 +53,11 @@ if __name__ == "__main__":
         default=0.01,
         help="learning rate",
     )
-    parser.add_argument(
-        "--f_size", type=int, default=10000, help="number of physics data (hybrid learning)"
-    )
-    parser.add_argument(
-        "--b_size", type=int, default=5, help="number of boundary data (hybrid learning)"
-    )
+    parser.add_argument("--task", nargs="+", help="Task (in a list form)", required=True)
 
     parser.add_argument("--fpath", type=str, default=None, help="pre-trained model path")
-    parser.add_argument("--project", type=str, default="temp", help="wandb project name")
+    parser.add_argument("--project", type=str, default="ishigami", help="wandb project name")
     parser.add_argument("--run_name", type=str, default=None, help="wandb run name")
-    parser.add_argument("--device_no", type=int, default=0, help="cuda device number")
-    parser.add_argument("--seed", type=int, default=None, help="seed for task generation")
-    parser.add_argument(
-        "--task_out", type=int, default=0, help="OOD tasks index, 0=ID, 1=OOD_1, 2=OOD_2"
-    )
     cfg = parser.parse_args()
     # wandb.init(project=cfg.project, config=cfg)
     # if cfg.run_name != None:

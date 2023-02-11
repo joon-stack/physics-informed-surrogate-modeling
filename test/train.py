@@ -14,10 +14,12 @@ from models import hybrid_model
 from metrics import compute_nrmse, compute_mse
 from data import generate_data, to_tensor, generate_tasks
 
-DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+import matplotlib.pyplot as plt
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-VAL_INTERVAL = 1
+VAL_INTERVAL = 100
 LOG_INTERVAL = 10
 SAVE_INTERVAL = 100
 
@@ -43,9 +45,10 @@ def train(
     task: list,
 ) -> dict:
 
+    print(f"Current Device: {DEVICE}")
     print(f"Current Mode: {mode}")
     # model = hybrid_model(neuron_size=64, layer_size=6, dim=2, log_dir=log_dir)
-    model = hybrid_model(neuron_size=64, layer_size=6, dim=3)
+    model = hybrid_model(neuron_size=64, layer_size=6, dim=1)
     task = np.array(task, dtype=np.float32)
     print("Current Task: ", task)
     # if mode == "data":
@@ -75,100 +78,6 @@ def train(
         x_val = x_val.to(DEVICE)
         y_val = y_val.to(DEVICE)
 
-    elif mode == "physics":
-        x_b_train, t_b_train, y_b_train = generate_data(
-            mode="boundary",
-            num_x=x_size,
-            num_t=t_size,
-            num_b=b_size,
-            num_i=i_size,
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
-            random=RANDOM,
-        )
-        x_b_train = to_tensor(x_b_train)
-        t_b_train = to_tensor(t_b_train)
-        y_b_train = to_tensor(y_b_train)
-
-        print(
-            f"x_b_train {x_b_train.shape}, t_b_train {t_b_train.shape}, y_b_train {y_b_train.shape}"
-        )
-
-        x_i_train, t_i_train, y_i_train = generate_data(
-            mode="initial",
-            num_x=x_size,
-            num_t=t_size,
-            num_b=b_size,
-            num_i=i_size,
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
-            random=RANDOM,
-        )
-        x_i_train = to_tensor(x_i_train)
-        t_i_train = to_tensor(t_i_train)
-        y_i_train = to_tensor(y_i_train)
-
-        print(
-            f"x_i_train {x_i_train.shape}, t_i_train {t_i_train.shape}, y_i_train {y_i_train.shape}"
-        )
-
-        x_f_train, t_f_train, y_f_train = generate_data(
-            mode=mode,
-            num_x=x_size,
-            num_t=t_size,
-            num_b=b_size,
-            num_i=i_size,
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
-            random=RANDOM,
-        )
-        x_f_train = to_tensor(x_f_train)
-        t_f_train = to_tensor(t_f_train)
-        y_f_train = to_tensor(y_f_train)
-
-        print(
-            f"x_f_train {x_f_train.shape}, t_f_train {t_f_train.shape}, y_f_train {y_f_train.shape}"
-        )
-
-        x_val, t_val, y_val = generate_data(
-            mode="data",
-            num_x=100,
-            num_t=100,
-            num_b=b_size,
-            num_i=i_size,
-            lb_x=LB_X,
-            rb_x=RB_X,
-            lb_t=LB_T,
-            rb_t=RB_T,
-            random=False,
-        )
-        x_val = to_tensor(x_val)
-        t_val = to_tensor(t_val)
-        y_val = to_tensor(y_val)
-
-        x_b_train = x_b_train.to(DEVICE)
-        t_b_train = t_b_train.to(DEVICE)
-        y_b_train = y_b_train.to(DEVICE)
-        x_i_train = x_i_train.to(DEVICE)
-        t_i_train = t_i_train.to(DEVICE)
-        y_i_train = y_i_train.to(DEVICE)
-        x_f_train = x_f_train.to(DEVICE)
-        t_f_train = t_f_train.to(DEVICE)
-        y_f_train = y_f_train.to(DEVICE)
-        x_val = x_val.to(DEVICE)
-        t_val = t_val.to(DEVICE)
-        y_val = y_val.to(DEVICE)
-
-        in_b_train = torch.hstack([x_b_train, t_b_train])
-        in_i_train = torch.hstack([x_i_train, t_i_train])
-        in_f_train = torch.hstack([x_f_train, t_f_train])
-        in_val = torch.hstack([x_val, t_val])
 
     elif mode == "hybrid":
         x_train, y_train = generate_data(mode="data", n=size, task=task)
@@ -220,12 +129,13 @@ def train(
                 loss_val = loss_func(y_val, model(x_val))
                 losses_val += [loss_val.item()]
                 mse = compute_mse(model(x_val).cpu().detach().numpy(), y_val.cpu().detach().numpy())
-                wandb.log({"loss_val": loss_val.item(), "mse": mse}, commit=False)
+                # wandb.log({"loss_val": loss_val.item(), "mse": mse}, commit=False)
 
-            wandb.log({"ep": epoch, "loss_train": loss_train.item()})
+            # wandb.log({"ep": epoch, "loss_train": loss_train.item()})
 
             if epoch % SAVE_INTERVAL == 0:
                 pass
+
 
     elif mode == "hybrid":
         fname = f"./logs/{mode}"
@@ -242,8 +152,8 @@ def train(
             optim.zero_grad()
 
             loss_d_train = loss_func(y_train, model(x_train))
-
-            loss_f_train = model.calc_loss_f(x_f_train, y_f_train)
+            for epoch in trange(1, 1 + 1):
+                loss_f_train = model.calc_loss_f(x_f_train, y_f_train)
 
             loss_d_train.to(DEVICE)
             loss_f_train.to(DEVICE)
@@ -265,19 +175,30 @@ def train(
                 losses_val += [loss_val.item()]
 
                 mse = compute_mse(model(x_val).cpu().detach().numpy(), y_val.cpu().detach().numpy())
-                wandb.log({"loss_val": loss_train.item(), "mse": mse}, commit=False)
+                # wandb.log({"loss_val": loss_train.item(), "mse": mse}, commit=False)
 
             if epoch % SAVE_INTERVAL == 0:
                 pass
 
-            wandb.log(
-                {
-                    "ep": epoch,
-                    "loss_d_train": loss_d_train.item(),
-                    "loss_f_train": loss_f_train.item(),
-                    "loss_train": loss_train.item(),
-                }
-            )
+            # wandb.log(
+            #     {
+            #         "ep": epoch,
+            #         "loss_d_train": loss_d_train.item(),
+            #         "loss_f_train": loss_f_train.item(),
+            #         "loss_train": loss_train.item(),
+            #     }
+            # )
+    
+    x_plot = x_val.detach().cpu().numpy()
+    y_plot = model(x_val).detach().cpu().numpy()
+    y_truth = y_val.detach().cpu().numpy()
+
+    print(f"mse: {mse:.4f}")
+
+    plt.scatter(x_plot, y_plot, label="model")
+    plt.scatter(x_plot, y_truth, label="truth")
+    plt.legend()
+    plt.show()
 
     # fname = os.path.join(wandb.run.dir, "model.h5")
     # save(epoch, model, optim, loss_train.item(), fname)

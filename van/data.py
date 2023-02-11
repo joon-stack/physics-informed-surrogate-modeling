@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 DESIGN_SIZE = 5
 
 def normalize(y_min: np.ndarray, y_max: np.ndarray, y: np.ndarray):
-    y_max = np.broadcast_to(y_max.reshape(-1, 1), y.shape)
-    y_min = np.broadcast_to(y_min.reshape(-1, 1), y.shape)
+    y_max = np.broadcast_to(y_max.reshape(1, -1), y.shape)
+    y_min = np.broadcast_to(y_min.reshape(1, -1), y.shape)
     res = (y - y_min) / (y_max - y_min)
     # plt.plot(y[:, 0])
     # plt.plot(y[:, 1])
@@ -81,7 +81,7 @@ def fem_data(task: np.ndarray, design_size: int, element_size: int):
     x = np.array(x)
     stress = np.array(stress)
     disp = np.array(disp)
-
+    
     return x, stress, disp
 
 
@@ -93,12 +93,14 @@ def generate_data(mode: str, n: int, task: np.ndarray):
     if mode == "data":
         # x, y = generate_x_y(x, task)
         # x, y = load_data()
-        idx = random.sample(range(len(x)), n)
-        idx.sort()
+        sampler = qmc.LatinHypercube(d=1, seed=None)
+        sample = sampler.random(n)
+        idx = qmc.scale(sample, 0, len(x))
+        idx = idx.astype(np.int8)
         x_sample = x[idx]
         stress_sample = stress[idx]
         disp_sample = disp[idx]
-        y = np.vstack((stress_sample, disp_sample))
+        y = np.hstack((stress_sample, disp_sample))
         return x_sample, y
 
     elif mode == "boundary":
@@ -109,7 +111,8 @@ def generate_data(mode: str, n: int, task: np.ndarray):
 
     elif mode == "physics":
         # y_shape = (x.shape[0], x.shape[1] * 2)
-        y = np.zeros(x.shape)
+        x = np.random.uniform(low=0.0, high=1.0, size=n)
+        y = np.zeros(x.shape, dtype=np.float32)
         return x, y
 
 

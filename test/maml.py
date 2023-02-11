@@ -13,13 +13,19 @@ from models import hybrid_model
 from data import *
 from metrics import *
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 VAL_INTERVAL = 10
 LOG_INTERVAL = 10
 SAVE_INTERVAL = 100
 
-DIM = 1
+# NU_LOW = 0.001 / np.pi
+# NU_HIGH = 0.02 / np.pi
+
+NU_LOW = -3
+NU_HIGH = -1
+
+RANDOM = False
 
 
 class MAML:
@@ -45,12 +51,14 @@ class MAML:
 
         print("Initializing MAML surrogate model")
 
-        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=DIM)
+        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=3)
         # self.model = nn.DataParallel(self.model)
         print("Current device: ", DEVICE)
         print(self.model)
         self.model.to(DEVICE)
         self.device = DEVICE
+
+        print(f"Random: {RANDOM}")
 
         self._num_inner_steps = num_inner_steps
 
@@ -100,16 +108,10 @@ class MAML:
         loss_fn = nn.MSELoss()
         opt_fn = torch.optim.Adam(model_phi.parameters(), lr=self._inner_lr)
 
-        # alpha = support
-
         x_train, y_train = support
 
-        y_min = np.min(y_train, axis=1)
-        y_max = np.max(y_train, axis=1)
-        y_train = normalize(y_min, y_max, y_train)
-
-        x_train = to_tensor(x_train).reshape(-1, 1)
-        y_train = to_tensor(y_train).T
+        x_train = to_tensor(x_train)
+        y_train = to_tensor(y_train).reshape(-1, 1)
 
         x_train = x_train.to(DEVICE)
         y_train = y_train.to(DEVICE)
@@ -138,13 +140,13 @@ class MAML:
         inner_loss += [loss.item()]
         grad = torch.autograd.grad(loss, model_phi.parameters()) if train else None
         phi = model_phi.state_dict()
-        nrmse = (
-            compute_nrmse(model_phi(x_train).cpu().detach().numpy(), y_train.cpu().detach().numpy())
+        mse = (
+            compute_mse(model_phi(x_train).cpu().detach().numpy(), y_train.cpu().detach().numpy())
             if not train
             else None
         )
         if not train:
-            nrmse_batch += [nrmse]
+            nrmse_batch += [mse]
 
         assert phi != None
         assert len(inner_loss) == num_inner_steps + 1
@@ -187,36 +189,29 @@ class MAML:
         sup_key, sup_data = sup
         qry_key, qry_data = qry
 
-
         sampled_sup = random.sample(sup_data, self.sampled_tasks_size)
         sampled_qry = random.sample(qry_data, self.sampled_tasks_size)
 
-        for idx in range(len(sampled_sup)):
+        for idx in tqdm(range(len(sampled_sup))):
             sup = sampled_sup[idx]
             qry = sampled_qry[idx]
 
             data_idx = random.sample(range(len(sup[0])), self.sampled_data_size)
-
             x_sup = sup[0][data_idx]
-            y_sup = sup[1][:, data_idx]
-
+            y_sup = sup[1][data_idx]
 
             sup = (x_sup, y_sup)
 
-            phi, grad, loss_sup, nrmse = self._inner_loop(theta, sup, train)
+            phi, grad, loss_sup, mse = self._inner_loop(theta, sup, train)
             inner_loss.append(loss_sup)
 
             model_outer.load_state_dict(phi)
             data_idx = random.sample(range(len(qry[0])), self.sampled_data_size)
             x_train = qry[0][data_idx]
-            y_train = qry[1][:, data_idx]
+            y_train = qry[1][data_idx]
 
-            y_min = np.min(y_train, axis=1)
-            y_max = np.max(y_train, axis=1)
-            y_train = normalize(y_min, y_max, y_train)
-
-            x_train = to_tensor(x_train).reshape(-1, 1)
-            y_train = to_tensor(y_train).T
+            x_train = to_tensor(x_train)
+            y_train = to_tensor(y_train).reshape(-1, 1)
 
             x_train = x_train.to(DEVICE)
             y_train = y_train.to(DEVICE)
@@ -229,7 +224,7 @@ class MAML:
                 for g_sum, g in zip(grad_sum, grad):
                     g_sum += g
             else:
-                nrmse_batch += [nrmse]
+                nrmse_batch += [mse]
 
         if train:
             for g in grad_sum:
@@ -287,11 +282,9 @@ class MAML:
             },
         )
         train_sup, train_qry = generate_tasks(num_train_tasks)
-
         train_data = generate_task_data(
             sup=train_sup, qry=train_qry, mode="data", size_sup=self.x_size, size_qry=self.x_size
         )
-
 
         for i in trange(1, train_steps + 1):
             self._train_step += 1
@@ -349,7 +342,7 @@ class MAML_hybrid:
         """
 
         print("Initializing MAML surrogate model")
-        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=DIM)
+        self.model = hybrid_model(neuron_size=64, layer_size=6, dim=3)
         # self.model = nn.DataParallel(self.model)
         # self.model = hybrid_model(neuron_size=5, layer_size=3, dim=2, log_dir=log_dir)
         print("Current device: ", DEVICE)

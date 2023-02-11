@@ -7,7 +7,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--project",
         type=str,
-        default="maml_tube",
+        default="maml_van",
         help="project name",
     )
     parser.add_argument(
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--x_size",
         type=int,
-        default=200,
+        default=100,
         help="number of labeled data",
     )
     parser.add_argument("--f_size", type=int, default=1000, help="number of physics data (physics)")
