@@ -36,13 +36,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--d_size",
         type=int,
-        default=100,
+        default=3,
         help="number of labeled data (supervised learning)",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=100,
+        default=10,
         help="number of epochs",
     )
     parser.add_argument(
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         "--task_out", type=int, default=0, help="OOD tasks index, 0=ID, 1=OOD_1, 2=OOD_2"
     )
     cfg = parser.parse_args()
-    # wandb.init(project=cfg.project, config=cfg)
-    # if cfg.run_name != None:
-    #     wandb.run.name = cfg.run_name
+    wandb.init(project=cfg.project, config=cfg)
+    if cfg.run_name != None:
+        wandb.run.name = cfg.run_name
     main(cfg)

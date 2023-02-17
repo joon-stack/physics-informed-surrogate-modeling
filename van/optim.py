@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 ELEMENT_SIZE = 5
 BEAM_LENGTH = 1.0
 
-MAX_STRESS = 14e8
+MAX_STRESS = 14e8 / 1e9
 MAX_DISP = 0.01
 
 HISTORY = []
@@ -22,7 +22,8 @@ def FEM_simulation(b: np.ndarray, h: np.ndarray):
     for i in range(ELEMENT_SIZE):
         ss.add_element(location=[[nodes[i], 0], [nodes[i+1], 0]], EI=E*I[i])
     ss.add_support_fixed(node_id=1)
-    ss.point_load(node_id=ELEMENT_SIZE+1, Fy=-P)
+    ss.point_load(node_id=ELEMENT_SIZE+1, Fy=-2 * P)
+    ss.point_load(node_id=ELEMENT_SIZE // 2 +1 , Fy = -P)
     print(ss.element_map[1].EI)
     # ss.point_load(node_id=ELEMENT_SIZE//2, Fy=-P)
     # print(b, h)
@@ -94,8 +95,8 @@ def constraint_stress(x):
     
 def optimize_beam():
     
-    b0 = np.full(ELEMENT_SIZE, 0.01, dtype=np.float32)
-    h0 = np.full(ELEMENT_SIZE, 0.2, dtype=np.float32)
+    b0 = np.full(ELEMENT_SIZE, 0.05, dtype=np.float32)
+    h0 = np.full(ELEMENT_SIZE, 0.4, dtype=np.float32)
     x0 = np.hstack([b0, h0])
     cons = [{'type': 'ineq', 'fun': constraint_disp},
             {'type': 'ineq', 'fun': constraint_stress},
@@ -110,7 +111,7 @@ def optimize_beam():
     bnds = [(0.01, None) for _ in range(ELEMENT_SIZE)]
     bnds_2 = [(0.2, None) for _ in range(ELEMENT_SIZE)]
     bnds = bnds + bnds_2
-    res = minimize(target, x0, method='trust-constr', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
+    res = minimize(target, x0, method='Nelder-Mead', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
     print(res.x)
     fig, ax = plt.subplots(1, 3)
     ax[0].plot(HISTORY)

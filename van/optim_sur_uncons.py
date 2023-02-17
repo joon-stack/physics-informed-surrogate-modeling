@@ -15,10 +15,11 @@ import wandb
 import argparse
 
 # Problem configurations
-ELEMENT_SIZE = 5
+ELEMENT_SIZE = 4
 BEAM_LENGTH = 1.0
 MAX_STRESS = 14e8 / 1e9
 MAX_DISP = 0.01
+PENALTY = 10
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -37,12 +38,15 @@ class FEM():
         I = b * h**3 / 12
         P = 400000
         E = 2e11
+        if np.sum(task <= 0) > 0:
+            return PENALTY, PENALTY
         nodes = np.linspace(0.0, BEAM_LENGTH, ELEMENT_SIZE+1)
         ss = SystemElements()
         for i in range(ELEMENT_SIZE):
             ss.add_element(location=[[nodes[i], 0], [nodes[i+1], 0]], EI=E*I[i])
         ss.add_support_fixed(node_id=1)
-        ss.point_load(node_id=ELEMENT_SIZE+1, Fy=-P)
+        ss.point_load(node_id=ELEMENT_SIZE+1, Fy=-0.5*P)
+        ss.point_load(node_id=ELEMENT_SIZE // 2 + 1, Fy=-P)
 
         ss.solve()
         moment = np.zeros(ELEMENT_SIZE)
@@ -66,12 +70,23 @@ class FEM():
         return self.disp, self.stress
 
     def target(self, task: np.ndarray):
-        print(task)
+        # print(task)
         self.ncall += 1
         # self(task)
         b = task[:ELEMENT_SIZE]
         h = task[ELEMENT_SIZE:]
         res = np.sum(b*h*BEAM_LENGTH/ELEMENT_SIZE)
+        disp, stress = self(task)
+        cons_d = max(0, disp/MAX_DISP - 1)
+        cons_s = max(0, stress/MAX_STRESS - 1)
+        cons_bh = np.array([h[i] / (20 * b[i]) - 1 for i in range(ELEMENT_SIZE)])
+        cons_bh = np.where(cons_bh > 0, cons_bh, 0)
+        bnds_b = np.array([0.01 / b[i] - 1 for i in range(ELEMENT_SIZE)])
+        bnds_h = np.array([0.05 / h[i] - 1 for i in range(ELEMENT_SIZE)])
+        bnds_b = np.where(bnds_b > 0, bnds_b, 0)
+        bnds_h = np.where(bnds_h > 0, bnds_h, 0)
+
+        res = res + PENALTY * (cons_d + cons_s + np.sum(cons_bh) + np.sum(bnds_b) + np.sum(bnds_h))
         self.history.append(res)
         wandb.log({
             "cost": res
@@ -108,7 +123,8 @@ class FEM():
         for i in range(ELEMENT_SIZE):
             ss.add_element(location=[[nodes[i], 0], [nodes[i+1], 0]], EI=E*I[i])
         ss.add_support_fixed(node_id=1)
-        ss.point_load(node_id=ELEMENT_SIZE+1, Fy=-P)
+        ss.point_load(node_id=ELEMENT_SIZE+1, Fy=-0.5*P)
+        ss.point_load(node_id=3, Fy=-P)
 
         ss.solve()
         ss.show_structure()
@@ -116,6 +132,55 @@ class FEM():
         ss.show_bending_moment()
 
         
+def optimize_beam_with_FEM(mode: str, fpath: str, method: str, maxiter: int):
+    # b0 = np.full(ELEMENT_SIZE, 0.02, dtype=np.float32)
+    # h0 = np.full(ELEMENT_SIZE, 0.4, dtype=np.float32)
+    b0 = np.array([0.02, 0.02, 0.02, 0.02], dtype=np.float32)
+    h0 = np.array([0.4, 0.4, 0.4, 0.4], dtype=np.float32)
+    x0 = np.hstack([b0, h0])
+    
+    sim = FEM()
+    sim(x0)
+
+    # cons = [{'type': 'ineq', 'fun': sim.cons_stress},
+    #         {'type': 'ineq', 'fun': sim.cons_disp},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[0] - x[0 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[1] - x[1 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[2] - x[2 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[3] - x[3 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[4] - x[4 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: x[0 + ELEMENT_SIZE] - x[0]},
+    #         {'type': 'ineq', 'fun': lambda x: x[1 + ELEMENT_SIZE] - x[1]},
+    #         {'type': 'ineq', 'fun': lambda x: x[2 + ELEMENT_SIZE] - x[2]},
+    #         {'type': 'ineq', 'fun': lambda x: x[3 + ELEMENT_SIZE] - x[3]},
+    #         {'type': 'ineq', 'fun': lambda x: x[4 + ELEMENT_SIZE] - x[4]},
+    # ]
+
+    # for i in range(ELEMENT_SIZE):
+    #     cons.append({'type': 'ineq', 'fun': lambda x: 20 * x[i] - x[i + ELEMENT_SIZE]})
+    bnds = [(0.01, None) for _ in range(ELEMENT_SIZE)]
+    bnds_2 = [(0.05, None) for _ in range(ELEMENT_SIZE)]
+    bnds = bnds + bnds_2
+    # res = minimize(sim.target, x0, method='SLSQP', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
+    res = minimize(sim.target, x0, method=method, options={"maxiter": maxiter, "disp": True})
+    # res = basinhopping(sim.target, x0)
+    my_table = wandb.Table(columns=["b1", "b2", "b3", "b4", "h1", "h2", "h3", "h4"], data=[res.x])
+    wandb.log({
+        "optim_x": my_table,
+        "optim_cost": res.fun,
+        "model_update_call": sim.model_update_call
+    })
+    # print(sim.ncall)
+
+    # fig, ax = plt.subplots(2, 2)
+    # ax[0][0].plot(sim.history)
+    # ax[0][1].plot(sim.disp_history)
+    # ax[1][0].plot(sim.stress_history)
+    # plt.savefig(f"van/figures/fem_{method}.png")
+
+    # plt.show()
+    sim.plot(res.x)
+    return res
 
 
 class Sim():
@@ -136,7 +201,7 @@ class Sim():
         self.dist_bound = dist_bound
 
     def __call__(self, task):
-        print(task)
+        # print(task)
         mode = self.mode
         d_size = self.d_size
         epochs = self.epochs
@@ -178,9 +243,15 @@ class Sim():
                 x_f_train, y_f_train = generate_data(mode="physics", n=10000, task=task)
                 x_f_train = to_tensor(x_f_train).reshape(-1, 1)
                 y_f_train = to_tensor(y_f_train).reshape(-1, 1)
+
+                x_f_train_2, y_f_train_2 = generate_data(mode="boundary", n=100, task=task)
+                x_f_train_2 = to_tensor(x_f_train_2).reshape(-1, 1)
+                y_f_train_2 = to_tensor(y_f_train_2).reshape(-1, 1)
                 
                 x_f_train = x_f_train.to(DEVICE)
                 y_f_train = y_f_train.to(DEVICE)
+                x_f_train_2 = x_f_train_2.to(DEVICE)
+                y_f_train_2 = y_f_train_2.to(DEVICE)
 
             loss_func = nn.MSELoss()
 
@@ -192,25 +263,36 @@ class Sim():
                     loss_train.to(DEVICE)
                     loss_train.backward()
                     optim.step()
+                wandb.log({
+                    "loss_d_train": loss_train,
+                },
+                commit=False,
+                )
 
             elif mode == "hybrid":
                 for _ in range(1, epochs + 1):
                     model.train()
                     optim.zero_grad()
                     loss_d_train = loss_func(y_train, model(x_train))
-                    loss_f_train = model.calc_loss_f(x_f_train, y_f_train)
-                    loss_f_train = model.calc
+                    loss_f_train = model.calc_loss_f(x_f_train, y_f_train) + model.calc_loss_f_2(x_f_train_2, y_f_train_2)
                     loss_d_train.to(DEVICE)
                     loss_f_train.to(DEVICE)
-                    loss_train = loss_d_train + loss_f_train
+                    loss_train = loss_d_train + 100 * loss_f_train
                     loss_train.backward()
                     optim.step()
+                wandb.log(
+                    {
+                    "loss_d_train": loss_d_train,
+                    "loss_f_train": loss_f_train,
+                    },
+                commit=False,
+                )
 
                     
             
             self.model = model.state_dict()
             self.model_update_call += 1
-            print("MODEL UPDATED")
+            # print("MODEL UPDATED")
 
             x_plot, y_ans = generate_data(mode="data", n=100, task=task)
             x_plot = x_plot.squeeze()
@@ -231,7 +313,7 @@ class Sim():
             model = hybrid_model(neuron_size=64, layer_size=6, dim=1)
             model.load_state_dict(self.model)
             model.to(DEVICE)
-            print("MODEL LOADED")
+            # print("MODEL LOADED")
 
 
         
@@ -248,28 +330,13 @@ class Sim():
         wandb.log({
             "nrmse": nrmse
         })
-        
-        # print(f"NRMSE: {compute_nrmse(y_plot, y_ans):.4f}")
-
-        # plt.plot(x_plot, y_plot[:, 0], 'r--', label='model')
-        # plt.plot(x_plot, y_ans[:, 0], 'b-', label='answer')
-        # plt.legend()
-        # plt.show()
-        # plt.cla()
-        # plt.plot(x_plot, y_plot[:, 1], 'r--', label='model')
-        # plt.plot(x_plot, y_ans[:, 1], 'b-', label='answer')
-        # plt.legend()
-        # plt.show()
 
         x = torch.linspace(0.0, 1.0, 100).reshape(-1, 1).to(DEVICE)
         y = denormalize(self.y_min, self.y_max, model(x).detach().cpu())
         stress, disp = torch.max(y, axis=0).values.numpy()
 
-        # self.disp_history.append(disp)
-        # self.stress_history.append(stress)
 
         return disp, stress
-        print(f"stress: {stress:4f}, disp: {disp:.4f}")
 
 
     def cons_stress(self, task):
@@ -306,6 +373,17 @@ class Sim():
         b = task[:ELEMENT_SIZE]
         h = task[ELEMENT_SIZE:]
         res = np.sum(b*h*BEAM_LENGTH/ELEMENT_SIZE)
+        disp, stress = self(task)
+        cons_d = max(0, disp/MAX_DISP - 1)
+        cons_s = max(0, stress/MAX_STRESS - 1)
+        cons_bh = np.array([h[i] / (20 * b[i]) - 1 for i in range(ELEMENT_SIZE)])
+        cons_bh = np.where(cons_bh > 0, cons_bh, 0)
+        bnds_b = np.array([0.01 / b[i] - 1 for i in range(ELEMENT_SIZE)])
+        bnds_h = np.array([0.05 / h[i] - 1 for i in range(ELEMENT_SIZE)])
+        bnds_b = np.where(bnds_b > 0, bnds_b, 0)
+        bnds_h = np.where(bnds_h > 0, bnds_h, 0)
+
+        res = res + PENALTY * (cons_d + cons_s + np.sum(cons_bh) + np.sum(bnds_b) + np.sum(bnds_h))
         self.history.append(res)
         wandb.log({
             "cost": res
@@ -315,37 +393,40 @@ class Sim():
 
 
 def optimize_beam(mode: str, fpath: str, method: str, d_size: int, steps: int, maxiter: int, dist_bound: int):
-    # b0 = np.full(ELEMENT_SIZE, 0.1, dtype=np.float32)
+    # b0 = np.full(ELEMENT_SIZE, 0.02, dtype=np.float32)
     # b0 = np.array([0.12, 0.11, 0.10, 0.09, 0.08], dtype=np.float32)
-    # # h0 = np.full(ELEMENT_SIZE, 0.2, dtype=np.float32)
+    # h0 = np.full(ELEMENT_SIZE, 0.4, dtype=np.float32)
     # h0 = np.array([0.24, 0.22, 0.2, 0.18, 0.16], dtype=np.float32)
-    b0 = np.array([0.02, 0.018, 0.016, 0.014, 0.010], dtype=np.float32)
-    h0 = np.array([0.4, 0.36, 0.33, 0.28, 0.20], dtype=np.float32)
+    # b0 = np.array([0.02, 0.018, 0.016, 0.014, 0.012], dtype=np.float32)
+    # h0 = np.array([0.4, 0.36, 0.32, 0.28, 0.24], dtype=np.float32)
+    b0 = np.array([0.02, 0.02, 0.02, 0.02], dtype=np.float32)
+    h0 = np.array([0.4, 0.4, 0.4, 0.4], dtype=np.float32)
     x0 = np.hstack([b0, h0])
     
     sim = Sim(fpath, mode, d_size, steps, dist_bound)
+
     sim(x0)
 
-    cons = [{'type': 'ineq', 'fun': sim.cons_stress},
-            {'type': 'ineq', 'fun': sim.cons_disp},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[0] - x[0 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[1] - x[1 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[2] - x[2 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[3] - x[3 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[4] - x[4 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: x[0 + ELEMENT_SIZE] - x[0]},
-            {'type': 'ineq', 'fun': lambda x: x[1 + ELEMENT_SIZE] - x[1]},
-            {'type': 'ineq', 'fun': lambda x: x[2 + ELEMENT_SIZE] - x[2]},
-            {'type': 'ineq', 'fun': lambda x: x[3 + ELEMENT_SIZE] - x[3]},
-            {'type': 'ineq', 'fun': lambda x: x[4 + ELEMENT_SIZE] - x[4]},
-    ]
+    # cons = [{'type': 'ineq', 'fun': sim.cons_stress},
+    #         {'type': 'ineq', 'fun': sim.cons_disp},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[0] - x[0 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[1] - x[1 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[2] - x[2 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[3] - x[3 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: 20 * x[4] - x[4 + ELEMENT_SIZE]},
+    #         {'type': 'ineq', 'fun': lambda x: x[0 + ELEMENT_SIZE] - x[0]},
+    #         {'type': 'ineq', 'fun': lambda x: x[1 + ELEMENT_SIZE] - x[1]},
+    #         {'type': 'ineq', 'fun': lambda x: x[2 + ELEMENT_SIZE] - x[2]},
+    #         {'type': 'ineq', 'fun': lambda x: x[3 + ELEMENT_SIZE] - x[3]},
+    #         {'type': 'ineq', 'fun': lambda x: x[4 + ELEMENT_SIZE] - x[4]},
+    # ]
 
     # for i in range(ELEMENT_SIZE):
     #     cons.append({'type': 'ineq', 'fun': lambda x: 20 * x[i] - x[i + ELEMENT_SIZE]})
-    bnds = [(0.01, 0,1) for _ in range(ELEMENT_SIZE)]
-    bnds_2 = [(0.05, 0.2) for _ in range(ELEMENT_SIZE)]
-    bnds = bnds + bnds_2
-    res = minimize(sim.target, x0, method=method, constraints=cons, bounds=bnds, options={"maxiter": maxiter, "disp": True})
+    # bnds = [(0.01, 0,1) for _ in range(ELEMENT_SIZE)]
+    # bnds_2 = [(0.05, 0.2) for _ in range(ELEMENT_SIZE)]
+    # bnds = bnds + bnds_2
+    res = minimize(sim.target, x0, method=method, options={"maxiter": maxiter, "disp": True})
 
     # fig, ax = plt.subplots(2, 2)
     # ax[0][0].plot(sim.history)
@@ -353,7 +434,8 @@ def optimize_beam(mode: str, fpath: str, method: str, d_size: int, steps: int, m
     # ax[1][0].plot(sim.stress_history)
     # ax[1][1].plot(sim.error_history)
 
-    my_table = wandb.Table(columns=["b1", "b2", "b3", "b4", "b5", "h1", "h2", "h3", "h4", "h5"], data=[res.x])
+    # my_table = wandb.Table(columns=["b1", "b2", "b3", "b4", "b5", "h1", "h2", "h3", "h4", "h5"], data=[res.x])
+    my_table = wandb.Table(columns=["b1", "b2", "b3", "b4", "h1", "h2", "h3", "h4"], data=[res.x])
     wandb.log({
         "optim_x": my_table,
         "optim_cost": res.fun,
@@ -367,54 +449,6 @@ def optimize_beam(mode: str, fpath: str, method: str, d_size: int, steps: int, m
     return res
 
 
-def optimize_beam_with_FEM(mode: str, fpath: str, method: str, maxiter: int):
-    # b0 = np.full(ELEMENT_SIZE, 0.1, dtype=np.float32)
-    # h0 = np.full(ELEMENT_SIZE, 0.2, dtype=np.float32)
-    b0 = np.array([0.02, 0.018, 0.016, 0.014, 0.010], dtype=np.float32)
-    h0 = np.array([0.4, 0.36, 0.33, 0.28, 0.20], dtype=np.float32)
-    x0 = np.hstack([b0, h0])
-    
-    sim = FEM()
-    sim(x0)
-
-    cons = [{'type': 'ineq', 'fun': sim.cons_stress},
-            {'type': 'ineq', 'fun': sim.cons_disp},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[0] - x[0 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[1] - x[1 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[2] - x[2 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[3] - x[3 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: 20 * x[4] - x[4 + ELEMENT_SIZE]},
-            {'type': 'ineq', 'fun': lambda x: x[0 + ELEMENT_SIZE] - x[0]},
-            {'type': 'ineq', 'fun': lambda x: x[1 + ELEMENT_SIZE] - x[1]},
-            {'type': 'ineq', 'fun': lambda x: x[2 + ELEMENT_SIZE] - x[2]},
-            {'type': 'ineq', 'fun': lambda x: x[3 + ELEMENT_SIZE] - x[3]},
-            {'type': 'ineq', 'fun': lambda x: x[4 + ELEMENT_SIZE] - x[4]},
-    ]
-
-    # for i in range(ELEMENT_SIZE):
-    #     cons.append({'type': 'ineq', 'fun': lambda x: 20 * x[i] - x[i + ELEMENT_SIZE]})
-    bnds = [(0.01, None) for _ in range(ELEMENT_SIZE)]
-    bnds_2 = [(0.05, None) for _ in range(ELEMENT_SIZE)]
-    bnds = bnds + bnds_2
-    # res = minimize(sim.target, x0, method='SLSQP', constraints=cons, bounds=bnds, options={"maxiter": 10000, "disp": True})
-    res = minimize(sim.target, x0, method=method, constraints=cons, bounds=bnds, options={"maxiter": maxiter, "disp": True})
-    my_table = wandb.Table(columns=["b1", "b2", "b3", "b4", "b5", "h1", "h2", "h3", "h4", "h5"], data=[res.x])
-    wandb.log({
-        "optim_x": my_table,
-        "optim_cost": res.fun,
-        "model_update_call": sim.model_update_call
-    })
-    # print(sim.ncall)
-
-    # fig, ax = plt.subplots(2, 2)
-    # ax[0][0].plot(sim.history)
-    # ax[0][1].plot(sim.disp_history)
-    # ax[1][0].plot(sim.stress_history)
-    # plt.savefig(f"van/figures/fem_{method}.png")
-
-    # plt.show()
-    # sim.plot(res.x)
-    return res
 
 
 if __name__ == "__main__":

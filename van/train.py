@@ -31,7 +31,7 @@ DIM = 1
 # TASK = np.array([5, 42, 120, 60, 3, 3, 90, 175, 5, 10, 12], dtype=np.float32)
 # TASK = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.5, 0.5, 0.5, 0.5, 0.5])
 
-VAL_INTERVAL = 100
+VAL_INTERVAL = 1
 LOG_INTERVAL = 10
 SAVE_INTERVAL = 100
 
@@ -67,7 +67,8 @@ def train(
     elif task_out == 2:
         task, _ = generate_tasks_out2(1, seed)
 
-    task = task[0]
+    # task = task[0]
+    task = np.array([0.02, 0.018, 0.016, 0.014, 0.012, 0.4, 0.36, 0.32, 0.28, 0.24])
     # task = TASK[0]
     # task = task.reshape(DIM)
 
@@ -89,8 +90,8 @@ def train(
     if mode == "data":
         x_train, y_train = generate_data(mode=mode, n=size, task=task)
         # y_train = y_train[1]
-        y_min = np.min(y_train, axis=1)
-        y_max = np.max(y_train, axis=1)
+        y_min = np.min(y_train, axis=0)
+        y_max = np.max(y_train, axis=0)
         
         y_train = normalize(y_min, y_max, y_train)
 
@@ -102,11 +103,11 @@ def train(
 
         # print(x_train, y_train)
         x_train = to_tensor(x_train).reshape(-1, 1)
-        y_train = to_tensor(y_train).T
+        y_train = to_tensor(y_train)
         # y_train = to_tensor(y_train).reshape(-1, 1)
 
         x_val = to_tensor(x_val).reshape(-1, 1)
-        y_val = to_tensor(y_val).T
+        y_val = to_tensor(y_val)
         # y_val = to_tensor(y_val).reshape(-1, 1)
         
 
@@ -173,13 +174,13 @@ def train(
                 with torch.no_grad():
                     loss_val = loss_func(y_val, model(x_val))
                     nrmse = compute_nrmse(model(x_val).cpu().detach().numpy(), y_val.cpu().detach().numpy())
-                    # wandb.log(
-                    #     {
-                    #         "loss_val": loss_val.item(),
-                    #         "nrmse": nrmse,
-                    #     },
-                    #     commit=False,
-                    # )
+                    wandb.log(
+                        {
+                            "loss_val": loss_val.item(),
+                            "nrmse": nrmse,
+                        },
+                        # commit=False,
+                    )
 
             # wandb.log({"ep": epoch, "loss_train": loss_train.item()})
 
@@ -217,13 +218,13 @@ def train(
                 with torch.no_grad():
                     loss_val = loss_func(y_val, model(x_val))
                     nrmse = compute_nrmse(model(x_val).cpu().detach().numpy(), y_val.cpu().detach().numpy())
-                    # wandb.log(
-                    #     {
-                    #         "loss_val": loss_val.item(),
-                    #         "nrmse": nrmse,
-                    #     },
-                    #     commit=False,
-                    # )
+                    wandb.log(
+                        {
+                            "loss_val": loss_val.item(),
+                            "nrmse": nrmse,
+                        },
+                        # commit=False,
+                    )
 
             if epoch % SAVE_INTERVAL == 0:
                 pass
@@ -247,17 +248,17 @@ def train(
     x_plot = x_plot[s]
     y_plot = y_plot[s].squeeze()
     y_val = y_val[s].squeeze()
-    # plt.scatter(x_plot, y_plot[:, 0], label="model")
-    # plt.scatter(x_plot, y_val[:, 0], label="truth")
+
     plt.plot(x_plot, y_plot[:, 0], 'r--', label="model")
     plt.plot(x_plot, y_val[:, 0], 'b-', label="truth")
     plt.legend()
     plt.show()
-    plt.cla()
-    plt.plot(x_plot, y_plot[:, 1], 'r--', label="model")
-    plt.plot(x_plot, y_val[:, 1], 'b-', label="truth")
-    plt.legend()
-    plt.show()
+    # plt.cla()
+    # plt.plot(x_plot, y_plot[:, 1], 'r--', label="model")
+    # plt.plot(x_plot, y_val[:, 1], 'b-', label="truth")
+    # plt.legend()
+    # plt.show()
+
     # stress_plot = y_plot[:, 0]
     # disp_plot = y_plot[:, 1]
     # stress_data = [[x, y] for (x, y) in zip(x_plot, stress_plot)]

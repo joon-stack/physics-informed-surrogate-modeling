@@ -91,3 +91,18 @@ class hybrid_model(nn.Module):
         
 
         return func(f, target)
+
+    def calc_loss_f_2(self, data, target):
+        if data == None:
+            return 0
+
+        u_hat = self(data)[:,1]
+        deriv_1 = autograd.grad(u_hat.sum(), data, create_graph=True)
+        u_hat_x = deriv_1[0].reshape(-1, 1)
+        # deriv_2 = autograd.grad(u_hat_x.sum(), data, create_graph=True)
+        # u_hat_xx = deriv_2[0].reshape(-1, 1)
+
+        f = u_hat_x
+        func = nn.MSELoss()
+
+        return func(f, target)

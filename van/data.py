@@ -5,7 +5,7 @@ import random
 from fem import get_fem_data
 import matplotlib.pyplot as plt
 
-DESIGN_SIZE = 5
+DESIGN_SIZE = 4
 
 def normalize(y_min: np.ndarray, y_max: np.ndarray, y: np.ndarray):
     y_max = np.broadcast_to(y_max.reshape(1, -1), y.shape)
@@ -26,44 +26,10 @@ def generate_tasks(n: int, seed=None):
     sampler = qmc.LatinHypercube(d=DESIGN_SIZE * 2, seed=seed)
     sample_sup = sampler.random(n)
     sample_qry = sampler.random(n)
-    l_bounds = [0.01, 0.01, 0.01, 0.01, 0.01, 0.05, 0.05, 0.05, 0.05, 0.05]
-    u_bounds = [0.1, 0.1, 0.1, 0.1, 0.1, 0.5, 0.5, 0.5, 0.5, 0.5]
-
-    sup = qmc.scale(sample_sup, l_bounds, u_bounds)
-    qry = qmc.scale(sample_qry, l_bounds, u_bounds)
-    return sup, qry
-
-
-def generate_tasks_out(n: int, seed=None):
-    sampler = qmc.LatinHypercube(d=DIM, seed=seed)
-    sample_sup = sampler.random(n)
-    sample_qry = sampler.random(n)
-    l_bounds = (
-        np.array([5.0, 42.0, 120.0, 60.0, 3.0, 3.0, 90.0, 175.0, 5.0, 10.0, 12.0], dtype=np.float32)
-        * 0.6
-    )
-    u_bounds = (
-        np.array([5.0, 42.0, 120.0, 60.0, 3.0, 3.0, 90.0, 175.0, 5.0, 10.0, 12.0], dtype=np.float32)
-        * 1.4
-    )
-
-    sup = qmc.scale(sample_sup, l_bounds, u_bounds)
-    qry = qmc.scale(sample_qry, l_bounds, u_bounds)
-    return sup, qry
-
-
-def generate_tasks_out2(n: int, seed=None):
-    sampler = qmc.LatinHypercube(d=DIM, seed=seed)
-    sample_sup = sampler.random(n)
-    sample_qry = sampler.random(n)
-    l_bounds = (
-        np.array([5.0, 42.0, 120.0, 60.0, 3.0, 3.0, 90.0, 175.0, 5.0, 10.0, 12.0], dtype=np.float32)
-        * 0.4
-    )
-    u_bounds = (
-        np.array([5.0, 42.0, 120.0, 60.0, 3.0, 3.0, 90.0, 175.0, 5.0, 10.0, 12.0], dtype=np.float32)
-        * 1.6
-    )
+    # l_bounds = [0.01, 0.01, 0.01, 0.01, 0.01, 0.05, 0.05, 0.05, 0.05, 0.05]
+    # u_bounds = [0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2, 0.2]
+    l_bounds = [0.01, 0.01, 0.01, 0.01, 0.05, 0.05, 0.05, 0.05]
+    u_bounds = [0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2]
 
     sup = qmc.scale(sample_sup, l_bounds, u_bounds)
     qry = qmc.scale(sample_qry, l_bounds, u_bounds)
@@ -89,7 +55,7 @@ def generate_data(mode: str, n: int, task: np.ndarray):
     # sampler = qmc.LatinHypercube(d=1, seed=None)
     # sample = sampler.random(n)
     # x = qmc.scale(sample, 0.0, 1.0)
-    x, stress, disp = fem_data(task=task, design_size=5, element_size=100)
+    x, stress, disp = fem_data(task=task, design_size=4, element_size=100)
     if mode == "data":
         # x, y = generate_x_y(x, task)
         # x, y = load_data()
@@ -97,6 +63,10 @@ def generate_data(mode: str, n: int, task: np.ndarray):
         sample = sampler.random(n)
         idx = qmc.scale(sample, 0, len(x))
         idx = idx.astype(np.int8)
+        # else:
+        #     idx = np.random.choice(100, n, replace=False)
+        #     idx = idx.reshape(-1, 1)
+        # print(idx.shape)
         x_sample = x[idx]
         stress_sample = stress[idx]
         disp_sample = disp[idx]
@@ -104,9 +74,11 @@ def generate_data(mode: str, n: int, task: np.ndarray):
         return x_sample, y
 
     elif mode == "boundary":
-        x = np.hstack([np.zeros(n), np.full(n, 1.0, dtype=np.float32)]).reshape(-1, 1)
+        # x = np.hstack([np.zeros(n), np.full(n, 1.0, dtype=np.float32)]).reshape(-1, 1)
         # x = np.hstack([np.zeros(n), np.full(n//2, 1.0, dtype=np.float32), np.zeros(n//2)]).reshape(-1, 1)
-        y = np.zeros((n*4, 1))
+        # y = np.zeros((n*4, 1))
+        x = np.zeros(n, dtype=np.float32)
+        y = np.zeros(x.shape, dtype=np.float32)
         return x, y
 
     elif mode == "physics":

@@ -81,16 +81,5 @@ if __name__ == "__main__":
             cfg.num_sample_tasks,
             cfg.num_sample_data,
         )
-    elif cfg.mode == "hybrid" or "physics":
-        maml = MAML_hybrid(
-            cfg.num_inner_steps,
-            cfg.inner_lr,
-            cfg.outer_lr,
-            cfg.x_size,
-            cfg.f_size,
-            cfg.num_sample_tasks,
-            cfg.num_sample_data,
-            cfg.mode,
-        )
 
     maml.train(cfg.num_outer_steps, cfg.num_train_tasks, cfg.num_val_tasks)
